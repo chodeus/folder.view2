@@ -1,11 +1,10 @@
 :root {
     --folder-view2-graph-cpu: #2b8da3;
     --folder-view2-graph-mem: #5d6db6;
-    /* Add a variable for spacing, makes it easier to adjust globally */
     --tooltip-spacing: 5px;
 }
 
-/* --- General Folder Styles (mostly unchanged, good as they are) --- */
+/* --- General Folder Styles --- */
 .hover:hover div.folder-preview div {
     visibility: visible;
 }
@@ -45,7 +44,7 @@
 }
 
 .folder-preview-wrapper {
-    float: left; /* Consider removing float if flexbox is used more broadly in .folder-preview */
+    float: left;
     height: 100%;
     margin-left: 10px;
     margin-top: 7px;
@@ -59,12 +58,12 @@
 }
 
 .folder-preview-divider:not(:last-child) {
-    float: left; /* As above, consider flex for alignment if floats cause issues */
+    float: left;
     height: 80%;
     width: 0;
     border-right: 1px solid;
     margin-left: 5px;
-    margin-top: -7px; /* This negative margin might need care */
+    margin-top: -7px;
 }
 
 .folder-element-custom-btn {
@@ -89,208 +88,201 @@ div.folder-preview img.img {
 div.folder-preview-4 span.outer {
     display: flex;
     flex-direction: column;
-    align-items: flex-start; /* Changed from left for consistency */
-    /* align-content: center; /* align-content is for multi-line flex containers, not usually needed here */
+    align-items: flex-start;
 }
 
-/* --- Tooltipster Base Styling (good as is) --- */
+/* --- Tooltipster Base Styling --- */
 .tooltipster-docker-folder>.tooltipster-box {
     border: initial !important;
     background: initial;
 }
 
 .tooltipster-docker-folder>.tooltipster-box>.tooltipster-content {
-    color: initial;
+    color: inherit;
     padding: initial;
-    overflow: initial; /* Be careful, if content is larger than box, it will be cut. Maybe 'visible' or 'auto' if needed */
+    overflow: visible;
 }
 
-/* --- Tooltip Content Layout --- */
+/* --- Tooltip Content Layout (Theme-agnostic) --- */
 .preview-outbox {
-    min-width: 700px;  /* Increased slightly, adjust as needed based on your widest content */
-    max-width: 700px;
-    min-height: 500px; /* Increased slightly, adjust based on your tallest content */
-    max-height: 500px;
+    min-width: 700px;
+    max-width: 90vw;
+    min-height: 400px;
+    max-height: 80vh;
     padding: var(--tooltip-spacing);
-    background-color: #fff; /* Assuming you want a white background for the tooltip content */
-    color: #333; /* Assuming you want dark text on a light background */
+    /* Inherit colors from Unraid's body/theme */
+    background-color: inherit;
+    color: inherit;
+    border: 1px solid currentColor;
     border-radius: 5px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: var(--tooltip-spacing); /* Space between .first-row and .second-row */
+    gap: var(--tooltip-spacing);
     overflow: auto;
 }
 
-.preview-img > .folder-img { /* Corrected selector */
+/* Force the tooltip to pick up page styling */
+.tooltipster-docker-folder {
+    color: inherit;
+    background-color: inherit;
+}
+
+.preview-img > .folder-img {
     width: 50px;
     height: 50px;
-    margin-right: var(--tooltip-spacing); /* Space between image and name */
+    margin-right: var(--tooltip-spacing);
 }
 
 /* --- First Row (Header-like info) --- */
 .first-row {
     display: flex;
     flex-direction: row;
-    flex-wrap: nowrap; /* Ensure these items stay on one line */
-    border: 1px solid #c5c5c5;
+    flex-wrap: nowrap;
+    border: 1px solid rgba(128, 128, 128, 0.3);
     border-radius: 5px;
     padding: var(--tooltip-spacing);
-    background-color: #f2f2f2;
-    gap: var(--tooltip-spacing); /* Space between preview-name and preview-status */
-    flex-shrink: 0; /* Prevent this row from shrinking */
+    background-color: rgba(128, 128, 128, 0.1);
+    gap: var(--tooltip-spacing);
+    flex-shrink: 0;
 }
 
 .preview-name {
     display: flex;
     align-items: center;
-    flex-grow: 1; /* Allow it to take available space */
+    flex-grow: 1;
     flex-shrink: 1;
-    /*min-width: 0; /* Allows shrinking below content size */
-    /* width: 15vw; /* Remove fixed/vw width, let flexbox handle it */
-    /* border-right: 1px solid; /* Replaced by gap on parent */
 }
 
 .preview-actual-name {
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap; /* Ensure name stays on one line and ellipsis works */
+    white-space: nowrap;
 }
 
 .preview-status {
     background-color: inherit;
     margin: inherit;
-    /* margin-left: 5px; /* Replaced by gap on parent */
-    border-collapse: separate; /* Good */
+    border-collapse: separate;
     width: 100%;
 }
 
 .status-header {
     text-align: left;
 }
-.status-header th { /* Add padding to header cells */
+
+.status-header th {
     padding: 4px 8px;
 }
 
 .status-header-version {
     border-radius: 5px 0 0 5px;
-    background-color: #ced1d3;
+    background-color: rgba(128, 128, 128, 0.2);
 }
 
 .status-header-stats {
-    background-color: #ced1d3;
+    background-color: rgba(128, 128, 128, 0.2);
 }
 
 .status-header-autostart {
     border-radius: 0 5px 5px 0;
-    background-color: #ced1d3;
+    background-color: rgba(128, 128, 128, 0.2);
 }
 
-.preview-status td { /* Add padding to table data cells */
+.preview-status td {
     padding: 4px 8px;
-    vertical-align: top; /* Align content to the top of cells */
+    vertical-align: top;
 }
-
 
 /* --- Second Row (Main content: Actions and Info Tabs) --- */
 .second-row {
     display: flex;
-    flex-wrap: nowrap; /* Critical to keep them side-by-side */
-    gap: calc(var(--tooltip-spacing) * 1.5); /* A bit more space between these main sections */
-    flex-grow: 1; /* Allow second row to take remaining vertical space in preview-outbox */
-    overflow: hidden; /* Prevent its children from overflowing the .preview-outbox */
+    flex-wrap: nowrap;
+    gap: calc(var(--tooltip-spacing) * 1.5);
+    flex-grow: 1;
+    overflow: hidden;
 }
 
 .action-info {
-    position: relative; /* For absolute positioning of .info-ct if kept */
+    position: relative;
     flex-grow: 0;
     flex-shrink: 0;
-    /* flex-basis: auto; /* Let content define its width */
-    /* OR provide a sensible basis if 'auto' is too narrow/wide */
-    flex-basis: 220px; /* Adjust this based on how wide your action links need to be */
-    display: flex; /* Make .action-info a flex container for .action and .info-ct */
-    flex-direction: column; /* Stack .action and .info-ct vertically */
+    flex-basis: 220px;
+    display: flex;
+    flex-direction: column;
 }
 
 .action {
-    display: flex; /* This will make .action-left and .action-right sit side-by-side */
+    display: flex;
     margin-bottom: 1em;
-    /* flex-grow: 1; /* If .action should take available vertical space before .info-ct */
 }
 
 .action ul {
     list-style: none;
-    padding: 0; /* Reset default ul padding */
+    padding: 0;
     margin: 0;
 }
 
 .action a {
     display: block;
-    padding: 2px 6px; /* Adjusted padding for better fit */
+    padding: 2px 6px;
     line-height: 24px;
-    color: #303030;
+    color: inherit;
     white-space: nowrap;
     text-decoration: none;
-    /* min-width: 6.5em; /* Let content define width, or adjust if necessary */
-    border-radius: 3px; /* Slightly smaller radius */
+    border-radius: 3px;
     cursor: pointer;
 }
 
 .action a:hover {
-    background-image: linear-gradient(to bottom, #e6e6e6, #e9e9e9);
+    background-color: rgba(128, 128, 128, 0.2);
 }
 
 .action-left {
-    /* If you want a border between action columns: */
-    /* border-right: 1px solid #c2c2c2; */
-    /* padding-right: var(--tooltip-spacing); */
-    margin-right: var(--tooltip-spacing); /* Space if no border */
+    margin-right: var(--tooltip-spacing);
 }
 
 .action-right {
-    /* Styles for the right column of actions if needed */
 }
 
 .info-ct {
-    /* If keeping static positioning (recommended for simplicity unless abs is crucial) */
-    margin-top: auto; /* Pushes it to the bottom if .action-info is a flex column */
-    /* margin-top: 10px; /* Or fixed margin if not using margin-top: auto */
+    margin-top: auto;
     border-radius: 5px;
-    background-color: #fcf6e1;
-    border: 1px solid #c8c4c1;
+    background-color: rgba(128, 128, 128, 0.1);
+    border: 1px solid rgba(128, 128, 128, 0.3);
     padding: 5px;
     font-size: 0.9em;
-    word-break: break-all; /* Good for long IDs/repos */
+    word-break: break-all;
 }
 
 .info-section {
     flex-grow: 1;
     flex-shrink: 1;
-    flex-basis: 0; /* Key for proper growth */
-    min-width: 0;  /* Allows shrinking below intrinsic width */
+    flex-basis: 0;
+    min-width: 0;
     background-color: inherit !important;
     border: none !important;
-    display: flex; /* Make it a flex container */
-    flex-direction: column; /* Stack tabs nav and tab panel */
+    display: flex;
+    flex-direction: column;
 }
 
 /* --- Tab Specific Styling --- */
-.info-tabs { /* The UL for the tab buttons */
+.info-tabs {
     display: flex;
     flex-wrap: wrap;
-    margin-bottom: 0; /* Usually, jQuery UI tabs might add margin, ensure it's controlled */
+    margin-bottom: 0;
     padding-left: 0;
     list-style: none;
-    flex-shrink: 0; /* Prevent tab buttons from shrinking */
+    flex-shrink: 0;
 }
 
-.info-tabs a { /* The clickable part of the tab */
-    padding: 8px 10px; /* More clickable area */
+.info-tabs a {
+    padding: 8px 10px;
     display: block;
     text-decoration: none;
-    color: #333; /* Or your theme's tab text color */
-    border: 1px solid transparent; /* Placeholder for active/hover states */
-    border-bottom: none; /* For typical tab appearance */
+    color: inherit;
+    border: 1px solid transparent;
+    border-bottom: none;
     border-radius: 4px 4px 0 0;
 }
 
@@ -299,76 +291,66 @@ div.folder-preview-4 span.outer {
 }
 
 .info-tabs > li[aria-selected="true"] a {
-    background-color: #f2f2f2; /* Or your theme's active tab background */
-    border-color: #c5c5c5; /* Match border of tab panel */
-    position: relative; /* For z-index if needed */
-    /* z-index: 1; */
+    background-color: rgba(128, 128, 128, 0.15);
+    border-color: rgba(128, 128, 128, 0.3);
+    position: relative;
 }
 
-.info-tabs > li[aria-selected="true"] { /* If you need to style the li itself */
-    /* background-color: #f2f2f2; /* Moved to 'a' for better click area styling */
+.info-tabs > li[aria-selected="true"] {
 }
-
 
 .info-tabs > li:not([aria-selected="true"]) a:hover {
-    background-color: #e8e8e8; /* Hover for non-active tabs */
+    background-color: rgba(128, 128, 128, 0.1);
 }
-
 
 .info-tabs > li[aria-disabled="true"] {
-    display: none !important; /* Ensure disabled tabs are hidden by jQuery UI Tabs are definitely hidden */
+    display: none !important;
 }
 
-.info-section .ui-tabs-panel { /* The content panel of an active tab */
+.info-section .ui-tabs-panel {
     padding: var(--tooltip-spacing);
     clear: both;
-    background-color: #f2f2f2; /* Or a suitable panel background */
-    border: 1px solid #c5c5c5; /* Border to match active tab */
-    border-top: none; /* If tabs are on top */
+    background-color: rgba(128, 128, 128, 0.1);
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-top: none;
     border-radius: 0 0 4px 4px;
-    flex-grow: 1; /* Allow panel to take available vertical space */
-    overflow-y: auto;     /* Make individual panels scrollable if their content is too tall for the grown panel */
-    min-height: 0; /* Helps flex-grow behave correctly in some scenarios with nested flex */
+    flex-grow: 1;
+    overflow-y: auto;
+    min-height: 0;
+    color: inherit;
 }
 
-
-/* Ensure jQuery UI doesn't add unwanted backgrounds/borders if it's conflicting */
-/* This is often needed when heavily customizing jQuery UI Tabs */
+/* Ensure jQuery UI doesn't add unwanted backgrounds/borders */
 .info-section.ui-tabs.ui-widget.ui-widget-content {
     border: none;
     background: none;
     padding: 0;
-    display: flex; /* Ensure the main ui-tabs widget is also a flex column */
+    display: flex;
     flex-direction: column;
-    flex-grow: 1; /* Allow the entire tabs widget to grow */
+    flex-grow: 1;
 }
+
 .info-section .ui-tabs-nav.ui-helper-reset.ui-helper-clearfix.ui-widget-header {
     border: none;
     background: none;
-    border-bottom: 1px solid #c5c5c5; /* Optional: a line under the tabs */
+    border-bottom: 1px solid rgba(128, 128, 128, 0.3);
     padding: 0;
-    flex-shrink: 0; /* Prevent the tab headers from shrinking */
+    flex-shrink: 0;
 }
 
-
 .info-ports, .info-volumes {
-    /* overflow: auto; /* Handled by .ui-tabs-panel now */
-    /* max-height: 200px; /* Remove this if you want them to fill the panel */
-    min-height: 100%; /* Attempt to make them take full height of the panel they are in */
-    box-sizing: border-box; /* If you add padding to these direct divs */
-    /* display: flex; flex-direction: column; /* If their internal content also needs to flex-grow */
+    min-height: 100%;
+    box-sizing: border-box;
+    color: inherit;
 }
 
 .info-ports a, .info-volumes a {
-    color: #486dba;
+    color: #6a9fd4;
 }
 
 /* Graph Canvas Responsiveness */
 .comb-stat-grapth, .cpu-stat-grapth, .mem-stat-grapth {
-    /* background-color: inherit !important; /* Already inherited via .info-section */
-    /* color: initial !important; */
-    /* border: none !important; */
-    padding: 5px; /* Add some padding around the canvas */
+    padding: 5px;
     box-sizing: border-box;
 }
 
@@ -376,13 +358,46 @@ div.folder-preview-4 span.outer {
 .cpu-stat-grapth canvas,
 .mem-stat-grapth canvas {
     max-width: 100%;
-    height: auto !important; /* Important for Chart.js responsiveness, override inline styles if any */
-    /* You might want a fixed aspect ratio or min-height for graphs */
-    min-height: 150px; /* Example */
+    height: auto !important;
+    min-height: 150px;
 }
 
-
-/* --- Specific Colors (already defined) --- */
+/* --- Specific Colors --- */
 .preview-outbox div.status-stats div.usage-disk.mm span:first-of-type {
     background-color: var(--folder-view2-graph-cpu);
+}
+
+.preview-outbox div.status-stats div.usage-disk.mm span:last-of-type {
+    background-color: var(--folder-view2-graph-mem);
+}
+
+/* === FOLDER EXPANDED STATE === */
+.folder-preview.expanded {
+    height: auto;
+    max-height: none;
+}
+
+/* === DOCKER CONTEXT MENU === */
+.docker-context {
+    position: absolute;
+    z-index: 1000;
+}
+
+.docker-context-menu {
+    background-color: inherit;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 4px;
+    padding: 5px 0;
+    min-width: 150px;
+}
+
+.docker-context-menu a {
+    display: block;
+    padding: 5px 15px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.docker-context-menu a:hover {
+    background-color: rgba(128, 128, 128, 0.2);
 }

@@ -15,7 +15,6 @@ Markdown="false"
 <link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.switchbutton.css')?>">
 <link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.ui.css')?>">
 <link type="text/css" rel="stylesheet" href="<?autov('/plugins/folder.view2/styles/folder.css')?>">
-<link type="text/css" rel="stylesheet" href="<?autov("/plugins/dynamix.docker.manager/styles/style-{$display['theme']}.css")?>">
 <link type="text/css" rel="stylesheet" href="<?autov("/plugins/folder.view2/styles/include/jquery.multiselect.css")?>">
 <script src="<?autov('/plugins/folder.view2/scripts/include/jquery.multiselect.js')?>"></script>
 
@@ -423,19 +422,9 @@ Markdown="false"
         </div>
         <input type="submit" value="Submit" data-i18n="[value]submit">
         <input type="button" value="Cancel" data-i18n="[value]cancel" onclick="cancelBtn()">
-        <div class="basic">
+        <div class="basic order-section">
             <dl>
                 <dt data-i18n="order">Order:</dt>
-                <dd></dd>
-            </dl>
-            <blockquote class="inline_help">
-                <p data-i18n="[html]order-tooltip">
-                    Drag and drop to make your desired order, if you edit the regex the selection will be deselected.
-                </p>
-            </blockquote>
-        </div>
-        <div class="basic" style="width: 115em; text-align: center; margin-top: 3em;">
-            <dl>
                 <dd>
                     <table class="sortable">
                         <thead>
@@ -453,6 +442,11 @@ Markdown="false"
                     </table>
                 </dd>
             </dl>
+            <blockquote class="inline_help">
+                <p data-i18n="[html]order-tooltip">
+                    Drag and drop to make your desired order, if you edit the regex the selection will be deselected.
+                </p>
+            </blockquote>
         </div>
     </form>
 </div>

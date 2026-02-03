@@ -1,4 +1,4 @@
-const FOLDER_VIEW_DEBUG_MODE = false; // Added for debugging
+const FOLDER_VIEW_DEBUG_MODE = false;
 
 if (FOLDER_VIEW_DEBUG_MODE) {
     console.log('[FV2_DEBUG] docker.js loaded. FOLDER_VIEW_DEBUG_MODE is ON.');
@@ -404,7 +404,7 @@ const createFolder = (folder, id, positionInMainOrder, liveOrderArray, container
         if (!$containerTR.length || !$containerTR.hasClass('sortable')) {
             if(FOLDER_VIEW_DEBUG_MODE) console.log(`[FV2_DEBUG] createFolder (id: ${id}), container ${container_name_in_folder}: TR not found by ID or not sortable. Fallback search...`);
             $containerTR = $("#docker_list > tr.sortable").filter(function() {
-                return $(this).find("td.ct-name .appname a").text().trim() === container_name_in_folder;
+                return $(this).find("td.ct-name .appname").text().trim() === container_name_in_folder;
             }).first();
         }
 
@@ -1560,21 +1560,17 @@ $.get('/plugins/folder.view2/server/cpu.php').promise().then((data) => {
     cpus = parseInt(data);
     if (FOLDER_VIEW_DEBUG_MODE) console.log(`[FV2_DEBUG] CPU count received: ${cpus}. Attaching SSE listener for dockerload.`);
     // Attach to the scoket and process the data
-    dockerload.addEventListener('message', (e_sse) => { // Renamed e to e_sse to avoid conflict
-        // if (FOLDER_VIEW_DEBUG_MODE) console.log('[FV2_DEBUG] dockerload SSE: Message event received. Event object:', e_sse);
+    dockerload.addEventListener('message', (e_sse) => {
+        // Unraid's dockerload passes data directly as the event in some versions, not in e.data
+        const sseData = (typeof e_sse.data === 'string') ? e_sse.data : (typeof e_sse === 'string' ? e_sse : null);
 
-        // --- START OF FIX ---
-        if (typeof e_sse.data !== 'string' || !e_sse.data.trim()) {
-            // if (FOLDER_VIEW_DEBUG_MODE) {
-            //     console.warn('[FV2_DEBUG] dockerload SSE: Received message without valid string data or empty data. Skipping. Data was:', e_sse.data);
-            // }
-            return; // Skip processing if data is not a string or is empty
+        if (!sseData || !sseData.trim()) {
+            return; // Skip if no valid data
         }
-        // --- END OF FIX ---
 
-        if (FOLDER_VIEW_DEBUG_MODE) console.log('[FV2_DEBUG] dockerload SSE: Message received (e_sse.data):', e_sse.data);
+        if (FOLDER_VIEW_DEBUG_MODE) console.log('[FV2_DEBUG] dockerload SSE: Message received:', sseData.substring(0, 100) + '...');
         let load = {};
-        const lines = e_sse.data.split('\n');
+        const lines = sseData.split('\n');
         lines.forEach((line_str) => { // Renamed e to line_str
             if (!line_str.trim()) return; // Skip empty lines
             const exp = line_str.split(';');

@@ -1,17 +1,24 @@
 <?xml version="1.0" standalone="yes"?>
 <!DOCTYPE PLUGIN [
 <!ENTITY name "folder.view2">
-<!ENTITY author "VladoPortos">
+<!ENTITY author "chodeus">
 <!ENTITY github "&author;/&name;">
 <!ENTITY launch "Settings/FolderView2">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
-<!ENTITY version "2025.04.13">
-<!ENTITY md5 "b3a00c47c4a549d6b97cc1e793f895d0">
+<!ENTITY version "2026.02.03">
+<!ENTITY md5 "12b42502ee0bbffe95d0a49513c33716">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/189167-plugin-folderview2" min="7.0.0">
     <CHANGES>
+
+###2026.02.03
+- Fix: Folder CPU and Memory stats not updating in advanced view
+- Fix: Docker Compose containers not being grouped into folders
+- Fix: Advanced Preview tooltip now works with all Unraid themes
+- Fix: Folder settings page layout issues on widescreen and mobile
+- Fix: Removed missing Docker Manager CSS reference causing nginx 404 errors
 
 ###2025.04.13
 - Fix: Ongoing effort to get new verson to CA, renamed folder.view to folder.view2
@@ -204,10 +211,10 @@
 
 ###2023.08.16
 - Updated the link to folder icon in the folder creation/editing page
-    
+
 ###2023.08.15
 - Fixed cpu load bars on docker advanced view
-    
+
 ###2023.08.11
 - Added a div insite the folder-name td
 
@@ -287,7 +294,7 @@
 
     <!-- New source file -->
     <FILE Name="/boot/config/plugins/&name;/&name;-&version;.txz" Run="upgradepkg --install-new">
-        <URL>https://raw.github.com/&github;/master/archive/&name;-&version;.txz</URL>
+        <URL>https://raw.githubusercontent.com/&github;/main/archive/&name;-&version;.txz</URL>
         <MD5>&md5;</MD5>
     </FILE>
 

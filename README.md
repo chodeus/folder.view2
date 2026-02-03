@@ -30,6 +30,9 @@ root@PlexServer:/boot/config/plugins/folder.view#
 
 Use link: https://raw.githubusercontent.com/VladoPortos/folder.view2/refs/heads/main/folder.view2.plg
 
+For Chodeus's vibe coded beta use link: https://raw.githubusercontent.com/chodeus/folder.view2/main/folder.view2.plg
+You can find the changelog in the repository.
+
 That link can be posted directly into the plugin install without needing to copy it to the filesystem beforehand.
 
 [![Install FolderView2](img/plugin_install.png)]
