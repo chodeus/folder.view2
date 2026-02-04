@@ -95,7 +95,7 @@
     "context-graph-time-tooltip": "Periodo de tiempo del gráfico en segundos (máximo de tiempo que puede llegar a mostrar).",
     "border": "Mostrar borde de vista previa:",
     "border-tooltip": "Mostrará un borde en el cuadro de vista previa.",
-    "border-color": "Color del borde de vista previa:",
+    "border-color": "Color del borde:",
     "border-color-tooltip": "Establece el color del borde de la vista previa.<br>El botón <i class=\"fa fa-repeat\" aria-hidden=\"true\"></i> restablecerá el color de fuente actual.",
     "bars-color": "Color de las barras verticales:",
     "bars-color-tooltip": "Establece el color de las barras verticales entre contenedores.<br>El botón <i class=\"fa fa-repeat\" aria-hidden=\"true\"></i> restablecerá el color de fuente actual.",

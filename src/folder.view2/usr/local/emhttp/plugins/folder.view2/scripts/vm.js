@@ -293,7 +293,7 @@ const createFolder = (folder, id, position, order, vmInfo, foldersDone) => {
     }
 
     // set the border on the last element
-    $(`.folder-${id}-element:last`).css('border-bottom', `1px solid ${folder.settings.preview_border_color}`);
+    $(`.folder-${id}-element:last`).css('border-bottom', '1px solid rgba(128, 128, 128, 0.3)');
 
     // replace the old containers array with the newFolder object
     folder.containers = newFolder;

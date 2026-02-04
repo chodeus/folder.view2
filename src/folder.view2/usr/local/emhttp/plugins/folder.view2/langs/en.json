@@ -95,7 +95,7 @@
     "context-graph-time-tooltip": "Time frame for the graph(s) in seconds.",
     "border": "Show preview border:",
     "border-tooltip": "Will Show a border on the preview box.",
-    "border-color": "Preview border color:",
+    "border-color": "Border color:",
     "border-color-tooltip": "Set the color of the preview border.<br>The <i class=\"fa fa-repeat\" aria-hidden=\"true\"></i> button will reset to the current font color.",
     "bars-color": "Vertical bars color:",
     "bars-color-tooltip": "Set the color of the vertical bars between containers.<br>The <i class=\"fa fa-repeat\" aria-hidden=\"true\"></i> button will reset to the current font color.",

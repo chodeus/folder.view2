@@ -95,7 +95,7 @@
     "context-graph-time-tooltip": "Zeitrahmen für den/die Graph(en) in Sekunden.",
     "border": "Vorschaurahmen anzeigen:",
     "border-tooltip": "Blendet einen Rahmen um die Vorschau-Box ein.",
-    "border-color": "Farbe des Vorschaurahmens:",
+    "border-color": "Rahmenfarbe:",
     "border-color-tooltip": "Farbe des Vorschaurahmens festlegen.<br>Mit dem <i class=\"fa fa-repeat\" aria-hidden=\"true\"></i>-Button wird die Farbe auf die aktuelle Schriftfarbe zurückgesetzt.",
     "bars-color": "Farbe der vertikalen Balken:",
     "bars-color-tooltip": "Farbe der vertikalen Balken zwischen Containern festlegen.<br>Mit dem <i class=\"fa fa-repeat\" aria-hidden=\"true\"></i>-Button wird die Farbe auf die aktuelle Schriftfarbe zurückgesetzt.",
