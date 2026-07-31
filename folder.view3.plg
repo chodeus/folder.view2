@@ -6,14 +6,19 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.08.01.2">
-<!ENTITY md5 "ff611fa7d7edb8979dfdfd64068aaf23">
+<!ENTITY version "2026.08.01.3">
+<!ENTITY md5 "ca2d83d9c59c191ff34e1816e854cca2">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/197223-plugin-folderview3/" min="7.0.0">
     <CHANGES>
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
+
+###2026.08.01.3
+- Fixed: sequence rows on the Autostart tab could still be dragged via the container icon while not in Custom sequence mode
+- Fixed: outside Custom mode the sequence table now shows the actual current start order instead of the remembered custom sequence
+- Changed: the Autostart tab's Apply/Reset buttons moved to the top of the panel
 
 ###2026.08.01.2
 - Added: Autostart tab (issue #49) — set a global container start order that cuts across folders, with drag-and-drop ordering, per-container wait times and docker-style autostart toggles
