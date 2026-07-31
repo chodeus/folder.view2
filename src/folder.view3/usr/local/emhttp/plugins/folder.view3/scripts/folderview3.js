@@ -653,6 +653,7 @@ const fv3AsRowHtml = (name, wait, enabled) => {
     const icon = (fv3AsInfo[name] && fv3AsInfo[name].icon) || '/plugins/dynamix.docker.manager/images/question.png';
     const folder = fv3AsFolderOf(name);
     return `<tr class="fv3-as-item" data-name="${escapeHtml(name)}"${enabled ? ' draggable="true"' : ''}>
+        <td class="fv3-as-pos"></td>
         <td class="fv3-as-name"><img src="${escapeHtml(icon)}" class="img" draggable="false" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';">${escapeHtml(name)}</td>
         <td>${folder ? `<span class="fv3-scope-badge">${escapeHtml(folder)}</span>` : ''}</td>
         <td class="fv3-as-toggle-cell"><input type="checkbox" class="fv3-as-toggle fv3-checkbox"${enabled ? ' checked' : ''}></td>
@@ -668,6 +669,11 @@ const fv3AsSortTable = (e) => {
     const near = sib.find(el => e.clientY - bound.top <= el.offsetTop + el.offsetHeight / 2);
     if (near) $(near).before($('.fv3-as-dragging'));
     else $('#fv3-as-rows').append($('.fv3-as-dragging'));
+};
+
+const fv3AsRenumber = () => {
+    $('#fv3-as-rows .fv3-as-item').each(function(i) { $(this).find('.fv3-as-pos').text(i + 1); });
+    $('#fv3-as-off-rows .fv3-as-item .fv3-as-pos').text('');
 };
 
 // the sequence is only editable in custom mode — folder/off show a read-only view
@@ -686,7 +692,7 @@ const fv3AsBindOnce = () => {
         if (this.getAttribute('draggable') !== 'true') { e.preventDefault(); return; }
         this.classList.add('fv3-as-dragging');
     });
-    $(document).on('dragend', '#fv3-as-rows .fv3-as-item', function() { this.classList.remove('fv3-as-dragging'); });
+    $(document).on('dragend', '#fv3-as-rows .fv3-as-item', function() { this.classList.remove('fv3-as-dragging'); fv3AsRenumber(); });
     $(document).on('touchstart', '#fv3-as-rows .fv3-as-item[draggable="true"]', function() { this.classList.add('fv3-as-dragging'); });
     $(document).on('touchmove', '#fv3-as-rows .fv3-as-item', function(e) {
         if (!this.classList.contains('fv3-as-dragging')) return;
@@ -694,7 +700,7 @@ const fv3AsBindOnce = () => {
         const touch = e.originalEvent.touches[0];
         fv3AsSortTable({ clientY: touch.clientY, preventDefault: () => {}, delegateTarget: this.closest('table') });
     });
-    $(document).on('touchend', '#fv3-as-rows .fv3-as-item', function() { this.classList.remove('fv3-as-dragging'); });
+    $(document).on('touchend', '#fv3-as-rows .fv3-as-item', function() { this.classList.remove('fv3-as-dragging'); fv3AsRenumber(); });
     // toggling moves the row between the sequence (end) and the not-autostarted section
     $(document).on('change', '.fv3-as-table .fv3-as-toggle', function() {
         const $tr = $(this).closest('tr');
@@ -702,6 +708,7 @@ const fv3AsBindOnce = () => {
         $tr.find('.fv3-as-wait').prop('disabled', !on);
         if (on) { $tr.attr('draggable', 'true'); $('#fv3-as-rows').append($tr); }
         else { $tr.removeAttr('draggable'); $tr.find('.fv3-as-wait').val(0); $('#fv3-as-off-rows').append($tr); }
+        fv3AsRenumber();
     });
 };
 
@@ -730,6 +737,7 @@ const fv3LoadAutostart = async () => {
         $('#fv3-as-rows').html(ordered.map(n => fv3AsRowHtml(n, waits[n] || 0, true)).join(''));
         $('#fv3-as-off-rows').html(disabled.map(n => fv3AsRowHtml(n, 0, false)).join(''));
         $('.fv3-as-table input.fv3-as-toggle').switchButton({ labels_placement: 'right', off_label: 'OFF', on_label: 'ON' });
+        fv3AsRenumber();
         fv3AsApplyModeState();
         const toggles = {};
         ordered.forEach(n => { toggles[n] = true; });

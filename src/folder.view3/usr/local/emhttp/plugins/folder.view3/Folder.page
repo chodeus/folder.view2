@@ -648,7 +648,7 @@ Markdown="false"
 
         <div class="fv3-form-actions">
             <span class="buttons-spaced">
-                <input type="submit" value="Submit" data-i18n="[value]submit">
+                <input type="submit" value="Apply" data-i18n="[value]apply">
                 <input type="button" value="Cancel" data-i18n="[value]cancel" onclick="cancelBtn()">
             </span>
             <?php if (!empty($_GET['id'])): ?>

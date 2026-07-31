@@ -500,7 +500,7 @@
 .fv3-button-bar {
     display: flex;
     gap: 8px;
-    justify-content: center;
+    justify-content: flex-end;
     padding: 1rem 0;
     max-width: 600px;
     margin: 0 auto;
@@ -601,4 +601,14 @@
 }
 .fv3-as-table.fv3-as-locked .fv3-as-item {
     cursor: default;
+}
+.fv3-button-bar.fv3-as-buttons {
+    justify-content: flex-end;
+    max-width: none;
+    margin: 0;
+}
+.fv3-as-table .fv3-as-pos {
+    width: 2.5em;
+    opacity: 0.7;
+    text-align: right;
 }

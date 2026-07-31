@@ -590,7 +590,7 @@ require_once('/usr/local/emhttp/plugins/folder.view3/langs/script.php');
 </div>
 
 <div class="fv3-page-panel" id="fv3-panel-autostart" style="display:none">
-    <div class="fv3-button-bar">
+    <div class="fv3-button-bar fv3-as-buttons">
         <button onclick="fv3SubmitAutostart()" data-i18n="apply">Apply</button>
         <button onclick="fv3CancelAutostart()" data-i18n="reset">Reset</button>
     </div>
@@ -617,6 +617,7 @@ require_once('/usr/local/emhttp/plugins/folder.view3/langs/script.php');
         <table class="fv3-folder-table fv3-as-table fv3-as-seq-table">
             <thead>
                 <tr>
+                    <th class="fv3-as-pos">#</th>
                     <th data-i18n="autostart-col-container">Container</th>
                     <th data-i18n="autostart-col-folder">Folder</th>
                     <th data-i18n="autostart">Autostart</th>
