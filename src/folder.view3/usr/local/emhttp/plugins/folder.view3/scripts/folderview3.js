@@ -653,7 +653,7 @@ const fv3AsRowHtml = (name, wait, enabled) => {
     const icon = (fv3AsInfo[name] && fv3AsInfo[name].icon) || '/plugins/dynamix.docker.manager/images/question.png';
     const folder = fv3AsFolderOf(name);
     return `<tr class="fv3-as-item" data-name="${escapeHtml(name)}"${enabled ? ' draggable="true"' : ''}>
-        <td class="fv3-as-pos"></td>
+        <td class="fv3-as-pos">${enabled ? '<input type="number" class="fv3-as-pos-input" min="1">' : ''}</td>
         <td class="fv3-as-name"><img src="${escapeHtml(icon)}" class="img" draggable="false" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';">${escapeHtml(name)}</td>
         <td>${folder ? `<span class="fv3-scope-badge">${escapeHtml(folder)}</span>` : ''}</td>
         <td class="fv3-as-toggle-cell"><input type="checkbox" class="fv3-as-toggle fv3-checkbox"${enabled ? ' checked' : ''}></td>
@@ -672,8 +672,7 @@ const fv3AsSortTable = (e) => {
 };
 
 const fv3AsRenumber = () => {
-    $('#fv3-as-rows .fv3-as-item').each(function(i) { $(this).find('.fv3-as-pos').text(i + 1); });
-    $('#fv3-as-off-rows .fv3-as-item .fv3-as-pos').text('');
+    $('#fv3-as-rows .fv3-as-item').each(function(i) { $(this).find('.fv3-as-pos-input').val(i + 1); });
 };
 
 // the sequence is only editable in custom mode — folder/off show a read-only view
@@ -681,6 +680,7 @@ const fv3AsApplyModeState = () => {
     const custom = $('#fv3-autostart-mode').val() === 'custom';
     $('#fv3-as-rows .fv3-as-item').attr('draggable', custom ? 'true' : 'false');
     $('#fv3-as-rows .fv3-as-wait').prop('disabled', !custom);
+    $('#fv3-as-rows .fv3-as-pos-input').prop('disabled', !custom);
     $('.fv3-as-table').toggleClass('fv3-as-locked', !custom);
 };
 
@@ -705,10 +705,37 @@ const fv3AsBindOnce = () => {
     $(document).on('change', '.fv3-as-table .fv3-as-toggle', function() {
         const $tr = $(this).closest('tr');
         const on = this.checked;
+        // switchButton re-fires change during init — only act on a genuine state flip
+        if (on === $tr.parent().is('#fv3-as-rows')) return;
         $tr.find('.fv3-as-wait').prop('disabled', !on);
-        if (on) { $tr.attr('draggable', 'true'); $('#fv3-as-rows').append($tr); }
-        else { $tr.removeAttr('draggable'); $tr.find('.fv3-as-wait').val(0); $('#fv3-as-off-rows').append($tr); }
+        if (on) {
+            $tr.attr('draggable', 'true');
+            $tr.find('.fv3-as-pos').html('<input type="number" class="fv3-as-pos-input" min="1">');
+            $('#fv3-as-rows').append($tr);
+        } else {
+            $tr.removeAttr('draggable');
+            $tr.find('.fv3-as-wait').val(0);
+            $tr.find('.fv3-as-pos').empty();
+            $('#fv3-as-off-rows').append($tr);
+        }
         fv3AsRenumber();
+    });
+    // type-to-jump: committing a number in the # column moves the row to that position
+    $(document).on('change', '#fv3-as-rows .fv3-as-pos-input', function() {
+        const $rows = $('#fv3-as-rows .fv3-as-item');
+        const $tr = $(this).closest('tr');
+        let pos = parseInt(this.value, 10);
+        if (!Number.isFinite(pos)) { fv3AsRenumber(); return; }
+        pos = Math.max(1, Math.min($rows.length, pos));
+        const target = pos - 1;
+        if (target === $rows.index($tr)) { fv3AsRenumber(); return; }
+        const $others = $rows.not($tr);
+        if (target >= $others.length) $('#fv3-as-rows').append($tr);
+        else $others.eq(target).before($tr);
+        fv3AsRenumber();
+    });
+    $(document).on('keydown', '#fv3-as-rows .fv3-as-pos-input', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); this.blur(); }
     });
 };
 

@@ -500,7 +500,7 @@
 .fv3-button-bar {
     display: flex;
     gap: 8px;
-    justify-content: flex-end;
+    justify-content: center;
     padding: 1rem 0;
     max-width: 600px;
     margin: 0 auto;
@@ -595,9 +595,13 @@
     opacity: 0.6;
 }
 .fv3-as-table.fv3-as-locked .fv3-as-toggle-cell,
-.fv3-as-table.fv3-as-locked input.fv3-as-wait {
+.fv3-as-table.fv3-as-locked input.fv3-as-wait,
+.fv3-as-table.fv3-as-locked input.fv3-as-pos-input {
     pointer-events: none;
     opacity: 0.5;
+}
+.fv3-as-table input.fv3-as-pos-input {
+    width: 3.5em;
 }
 .fv3-as-table.fv3-as-locked .fv3-as-item {
     cursor: default;
