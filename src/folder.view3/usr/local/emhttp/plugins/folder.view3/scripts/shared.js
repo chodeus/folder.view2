@@ -1576,8 +1576,15 @@ window.fv3SyncOrganizer = async (folders) => {
             }
         }
 
+        // registry = organizer folders FV3 itself created — the only ones safe to delete on FV3 rename/delete
+        var registry = [];
+        try {
+            var regResp = await fetch('/plugins/folder.view3/server/read_organizer_registry.php', { credentials: 'same-origin' });
+            registry = ((await regResp.json()) || {}).folders || [];
+        } catch (eReg) { /* registry unavailable — skip stale-folder cleanup this round */ }
+
         var seen = {};
-        var created = 0, updated = 0;
+        var created = 0, updated = 0, deleted = 0;
 
         for (var fv3Id in folders) {
             var folder = folders[fv3Id];
@@ -1623,8 +1630,36 @@ window.fv3SyncOrganizer = async (folders) => {
             }
         }
 
-        if (created || updated) fv3Debug('OrgSync', 'Done:', { created: created, updated: updated });
+        // FV3-registered folders whose FV3 folder no longer exists (deleted or renamed) — remove the
+        // organizer twin; its containers return to the organizer root. Unregistered folders are never touched.
+        for (var d = 0; d < registry.length; d++) {
+            var staleName = registry[d];
+            if (!seen[staleName] && orgFolders[staleName] && orgFolders[staleName].id !== rootId) {
+                await fv3GraphQL(
+                    'mutation($ids: [String!]!) { deleteDockerEntries(entryIds: $ids) { version } }',
+                    { ids: [orgFolders[staleName].id] }
+                );
+                deleted++;
+            }
+        }
+        // registry follows the mirrored FV3 folder names (adopts folders created before the registry existed)
+        var newRegistry = Object.keys(seen).sort();
+        if (newRegistry.join('\n') !== registry.slice().sort().join('\n')) {
+            try {
+                await fetch('/plugins/folder.view3/server/update_organizer_registry.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    credentials: 'same-origin',
+                    body: 'folders=' + encodeURIComponent(JSON.stringify(newRegistry)) +
+                          '&csrf_token=' + encodeURIComponent(typeof csrf_token !== 'undefined' ? csrf_token : '')
+                });
+            } catch (eReg2) { /* flash write failed — retried next sync */ }
+        }
+
+        if (created || updated || deleted) fv3Debug('OrgSync', 'Done:', { created: created, updated: updated, deleted: deleted });
     } catch (e) {
+        // unconditional console.warn — a silent mirror failure hid a broken feature for two weeks
+        console.warn('[FV3] Organizer sync failed (non-fatal):', e.message);
         fv3DebugWarn('OrgSync', 'Sync failed (non-fatal):', e.message);
     }
 };

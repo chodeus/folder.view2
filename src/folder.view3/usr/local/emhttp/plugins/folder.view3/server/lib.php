@@ -195,6 +195,31 @@
         return ['mode' => $mode, 'sequence' => array_values(array_unique($sequence))];
     }
 
+    // Names of organizer folders FV3 created/manages — user-made native folders are never listed here
+    function readOrganizerRegistry(): array {
+        global $configDir;
+        $reg = fv3_read_json("$configDir/organizer-registry.json");
+        $names = [];
+        foreach ((array)($reg['folders'] ?? []) as $n) {
+            if (is_string($n) && $n !== '' && strlen($n) <= 100) $names[] = $n;
+        }
+        return array_values(array_unique($names));
+    }
+
+    function updateOrganizerRegistry(array $names): bool {
+        global $configDir;
+        $clean = [];
+        foreach ($names as $n) {
+            if (!is_string($n)) continue;
+            $n = trim(preg_replace('/[\x00-\x1f\x7f]/', '', $n));
+            if ($n === '' || strlen($n) > 100) continue;
+            $clean[] = $n;
+            if (count($clean) >= 200) break;
+        }
+        $clean = array_values(array_unique($clean));
+        return fv3_atomic_write("$configDir/organizer-registry.json", json_encode(['folders' => $clean], JSON_PRETTY_PRINT));
+    }
+
     function updateAutostartConfig(string $mode, array $sequence, array $waits): array {
         global $configDir;
         if (!in_array($mode, ['folder', 'custom', 'off'], true)) return ['error' => 'Invalid mode'];
@@ -430,6 +455,13 @@
         // A folder must be an object/array — reject scalars so a full-backup bundle can't pollute $type.json
         if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
             http_response_code(400);
+            exit;
+        }
+        // 'root' is reserved by Unraid's Docker organizer — a same-named folder can never mirror
+        if (isset($decoded['name']) && is_string($decoded['name']) && strtolower(trim($decoded['name'])) === 'root') {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => "The folder name 'root' is reserved by Unraid's Docker organizer"]);
             exit;
         }
         $fileData = fv3_read_json("$configDir/$type.json");

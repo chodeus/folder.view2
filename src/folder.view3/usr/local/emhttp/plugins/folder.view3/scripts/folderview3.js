@@ -652,12 +652,13 @@ const fv3AsFolderOf = (name) => {
 const fv3AsRowHtml = (name, wait, enabled) => {
     const icon = (fv3AsInfo[name] && fv3AsInfo[name].icon) || '/plugins/dynamix.docker.manager/images/question.png';
     const folder = fv3AsFolderOf(name);
-    return `<tr class="fv3-as-item" data-name="${escapeHtml(name)}"${enabled ? ' draggable="true"' : ''}>
-        <td class="fv3-as-pos">${enabled ? '<input type="number" class="fv3-as-pos-input" min="1">' : ''}</td>
-        <td class="fv3-as-name"><img src="${escapeHtml(icon)}" class="img" draggable="false" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';">${escapeHtml(name)}</td>
+    const safeName = escapeHtml(name);
+    return `<tr class="fv3-as-item" data-name="${safeName}"${enabled ? ' draggable="true"' : ''}>
+        <td class="fv3-as-pos">${enabled ? `<input type="number" class="fv3-as-pos-input" min="1" name="fv3-as-pos-${safeName}">` : ''}</td>
+        <td class="fv3-as-name"><img src="${escapeHtml(icon)}" class="img" draggable="false" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';">${safeName}</td>
         <td>${folder ? `<span class="fv3-scope-badge">${escapeHtml(folder)}</span>` : ''}</td>
-        <td class="fv3-as-toggle-cell"><input type="checkbox" class="fv3-as-toggle fv3-checkbox"${enabled ? ' checked' : ''}></td>
-        <td><input type="number" class="fv3-as-wait" min="0" max="3600" value="${Number.isFinite(wait) ? wait : 0}"${enabled ? '' : ' disabled'}></td>
+        <td class="fv3-as-toggle-cell"><input type="checkbox" class="fv3-as-toggle fv3-checkbox" name="fv3-as-autostart-${safeName}"${enabled ? ' checked' : ''}></td>
+        <td><input type="number" class="fv3-as-wait" min="0" max="3600" name="fv3-as-wait-${safeName}" value="${Number.isFinite(wait) ? wait : 0}"${enabled ? '' : ' disabled'}></td>
     </tr>`;
 };
 
@@ -710,7 +711,7 @@ const fv3AsBindOnce = () => {
         $tr.find('.fv3-as-wait').prop('disabled', !on);
         if (on) {
             $tr.attr('draggable', 'true');
-            $tr.find('.fv3-as-pos').html('<input type="number" class="fv3-as-pos-input" min="1">');
+            $tr.find('.fv3-as-pos').html('<input type="number" class="fv3-as-pos-input" min="1" name="fv3-as-pos-' + $tr.attr('data-name') + '">');
             $('#fv3-as-rows').append($tr);
         } else {
             $tr.removeAttr('draggable');
@@ -809,11 +810,17 @@ const fv3SubmitAutostart = async () => {
     if (!fv3AsSnapshot) return;
     const cur = fv3AsCollect();
     try {
+        // fresh file state, not the load-time snapshot: Unraid removes by exact "name wait" line match
+        // (mismatch corrupts entry 0) and duplicates on re-add — a concurrent docker-page edit must not trip either
+        const live = fv3SafeParse(await $.get('/plugins/folder.view3/server/read_autostart.php').promise(), {});
+        const liveWaits = {};
+        (live.autostart || []).forEach(e => { liveWaits[e.name] = e.wait || 0; });
         // autostart on/off goes through Unraid's own handler; the batch below re-asserts order after its re-sort
         for (const [name, on] of Object.entries(cur.toggles)) {
             if ((fv3AsSnapshot.toggles[name] || false) === on) continue;
-            // OFF must post the wait currently in the file — Unraid matches the whole "name wait" line
-            const wait = on ? (cur.waits[name] > 0 ? cur.waits[name] : '') : (fv3AsSnapshot.waits[name] > 0 ? fv3AsSnapshot.waits[name] : '');
+            const inFile = Object.prototype.hasOwnProperty.call(liveWaits, name);
+            if (on === inFile) continue;
+            const wait = on ? (cur.waits[name] > 0 ? cur.waits[name] : '') : (liveWaits[name] > 0 ? liveWaits[name] : '');
             await $.post('/plugins/dynamix.docker.manager/include/UpdateConfig.php', {
                 action: 'autostart', container: name, wait: wait, auto: on ? 'true' : 'false',
                 csrf_token: typeof csrf_token !== 'undefined' ? csrf_token : ''
