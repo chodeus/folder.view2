@@ -6,14 +6,19 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.08.01.4">
-<!ENTITY md5 "1bfeafee2a0ce7362dd553be864d2e1f">
+<!ENTITY version "2026.08.01.5">
+<!ENTITY md5 "1a2ee304a92d5a3274f23e859f79c70d">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/197223-plugin-folderview3/" min="7.0.0">
     <CHANGES>
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
+
+###2026.08.01.5
+- Added: type-to-jump on the Autostart tab — type a number in the position column to move a container straight to that spot in the sequence
+- Changed: the Autostart Apply/Reset buttons now sit right-aligned directly under the start-order mode selector; other settings panels keep their centered buttons
+- Fixed: a latent row-reorder trap when the autostart toggles initialise
 
 ###2026.08.01.4
 - Added: position numbers in the Autostart sequence table
