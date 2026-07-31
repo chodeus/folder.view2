@@ -6,14 +6,21 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.08.01.5">
-<!ENTITY md5 "1a2ee304a92d5a3274f23e859f79c70d">
+<!ENTITY version "2026.08.01.6">
+<!ENTITY md5 "c03661d9669790a097bd81abb44ad162">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/197223-plugin-folderview3/" min="7.0.0">
     <CHANGES>
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
+
+###2026.08.01.6
+- Added: deleting or renaming an FV3 folder now also removes its counterpart in the Unraid Docker organizer (folders created natively by the user are never touched)
+- Fixed: toggling autostart in the Autostart tab can no longer trip a stock Unraid edge that removes the wrong container's autostart entry when the wait was changed elsewhere mid-edit
+- Fixed: organizer sync failures now log a visible browser-console warning instead of failing silently
+- Fixed: Autostart tab form fields now have unique names (clears the browser autofill warnings in dev tools)
+- Changed: the folder name 'root' (any case) is rejected — it is reserved by Unraid's Docker organizer
 
 ###2026.08.01.5
 - Added: type-to-jump on the Autostart tab — type a number in the position column to move a container straight to that spot in the sequence
