@@ -6,14 +6,20 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.07.17.1">
-<!ENTITY md5 "3efb5c44abe84d5753e1967ebd430f24">
+<!ENTITY version "2026.08.01.1">
+<!ENTITY md5 "547a1d629df4e615a6422c6bcb959945">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/197223-plugin-folderview3/" min="7.0.0">
     <CHANGES>
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
+
+###2026.08.01.1
+- Fixed: FV3 folders now actually populate in the Unraid 7.2+ native Docker organizer — the API returns docker-style container names (/plex) that never matched, so mirrored folders were always created empty
+- Fixed: the organizer mirror now moves containers instead of re-parenting copies — no more duplicate entries under the organizer root, and pre-existing duplicates self-heal on the next Docker page load
+- Fixed: the organizer mirror skips a folder whose members can't be resolved instead of emptying it
+- Fixed: folder update badges can now light up from the Dashboard's API update check
 
 ###2026.07.17.1
 - Fixed: a degraded Docker API read during a folder save / order sync can no longer wipe container autostart settings (same guard as read-info)
