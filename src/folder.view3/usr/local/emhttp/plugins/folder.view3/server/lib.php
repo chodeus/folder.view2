@@ -203,7 +203,7 @@
         foreach ((array)($reg['folders'] ?? []) as $n) {
             if (is_string($n) && $n !== '' && strlen($n) <= 100) $names[] = $n;
         }
-        return array_values(array_unique($names));
+        return ['folders' => array_values(array_unique($names))];
     }
 
     function updateOrganizerRegistry(array $names): bool {

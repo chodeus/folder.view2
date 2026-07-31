@@ -1577,11 +1577,12 @@ window.fv3SyncOrganizer = async (folders) => {
         }
 
         // registry = organizer folders FV3 itself created — the only ones safe to delete on FV3 rename/delete
-        var registry = [];
+        var registry = [], regOk = false;
         try {
             var regResp = await fetch('/plugins/folder.view3/server/read_organizer_registry.php', { credentials: 'same-origin' });
-            registry = ((await regResp.json()) || {}).folders || [];
-        } catch (eReg) { /* registry unavailable — skip stale-folder cleanup this round */ }
+            registry = (((await regResp.json()) || {}).folders) || [];
+            regOk = true;
+        } catch (eReg) { /* registry unavailable — skip all cleanup this round */ }
 
         var seen = {};
         var created = 0, updated = 0, deleted = 0;
@@ -1634,7 +1635,7 @@ window.fv3SyncOrganizer = async (folders) => {
         // organizer twin; its containers return to the organizer root. Unregistered folders are never touched.
         for (var d = 0; d < registry.length; d++) {
             var staleName = registry[d];
-            if (!seen[staleName] && orgFolders[staleName] && orgFolders[staleName].id !== rootId) {
+            if (regOk && !seen[staleName] && orgFolders[staleName] && orgFolders[staleName].id !== rootId) {
                 await fv3GraphQL(
                     'mutation($ids: [String!]!) { deleteDockerEntries(entryIds: $ids) { version } }',
                     { ids: [orgFolders[staleName].id] }
@@ -1644,7 +1645,7 @@ window.fv3SyncOrganizer = async (folders) => {
         }
         // registry follows the mirrored FV3 folder names (adopts folders created before the registry existed)
         var newRegistry = Object.keys(seen).sort();
-        if (newRegistry.join('\n') !== registry.slice().sort().join('\n')) {
+        if (regOk && newRegistry.join('\n') !== registry.slice().sort().join('\n')) {
             try {
                 await fetch('/plugins/folder.view3/server/update_organizer_registry.php', {
                     method: 'POST',
