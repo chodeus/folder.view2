@@ -653,7 +653,7 @@ const fv3AsRowHtml = (name, wait, enabled) => {
     const icon = (fv3AsInfo[name] && fv3AsInfo[name].icon) || '/plugins/dynamix.docker.manager/images/question.png';
     const folder = fv3AsFolderOf(name);
     return `<tr class="fv3-as-item" data-name="${escapeHtml(name)}"${enabled ? ' draggable="true"' : ''}>
-        <td class="fv3-as-name"><img src="${escapeHtml(icon)}" class="img" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';">${escapeHtml(name)}</td>
+        <td class="fv3-as-name"><img src="${escapeHtml(icon)}" class="img" draggable="false" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';">${escapeHtml(name)}</td>
         <td>${folder ? `<span class="fv3-scope-badge">${escapeHtml(folder)}</span>` : ''}</td>
         <td class="fv3-as-toggle-cell"><input type="checkbox" class="fv3-as-toggle fv3-checkbox"${enabled ? ' checked' : ''}></td>
         <td><input type="number" class="fv3-as-wait" min="0" max="3600" value="${Number.isFinite(wait) ? wait : 0}"${enabled ? '' : ' disabled'}></td>
@@ -661,6 +661,7 @@ const fv3AsRowHtml = (name, wait, enabled) => {
 };
 
 const fv3AsSortTable = (e) => {
+    if (!$('#fv3-as-rows .fv3-as-dragging').length) return;
     e.preventDefault();
     const sib = [...$('#fv3-as-rows .fv3-as-item:not(.fv3-as-dragging)')];
     const bound = e.delegateTarget.getBoundingClientRect();
@@ -680,7 +681,11 @@ const fv3AsApplyModeState = () => {
 const fv3AsBindOnce = () => {
     $('#fv3-autostart-mode').on('change', fv3AsApplyModeState);
     $('.fv3-as-seq-table').on('dragover', fv3AsSortTable).on('dragenter', (e) => { e.preventDefault(); });
-    $(document).on('dragstart', '#fv3-as-rows .fv3-as-item', function() { this.classList.add('fv3-as-dragging'); });
+    // a child (e.g. the icon img) can natively start a drag even when the row is draggable=false — block it
+    $(document).on('dragstart', '#fv3-as-rows .fv3-as-item', function(e) {
+        if (this.getAttribute('draggable') !== 'true') { e.preventDefault(); return; }
+        this.classList.add('fv3-as-dragging');
+    });
     $(document).on('dragend', '#fv3-as-rows .fv3-as-item', function() { this.classList.remove('fv3-as-dragging'); });
     $(document).on('touchstart', '#fv3-as-rows .fv3-as-item[draggable="true"]', function() { this.classList.add('fv3-as-dragging'); });
     $(document).on('touchmove', '#fv3-as-rows .fv3-as-item', function(e) {
@@ -716,8 +721,8 @@ const fv3LoadAutostart = async () => {
         const enabledNames = fileEntries.map(e => e.name);
         const waits = {};
         fileEntries.forEach(e => { waits[e.name] = e.wait || 0; });
-        // saved sequence orders the enabled rows; live file order seeds anything unsequenced
-        const seq = (as.sequence || []).filter(n => enabledNames.includes(n));
+        // custom mode displays the saved sequence; other modes show the true live-file order
+        const seq = (as.mode === 'custom') ? (as.sequence || []).filter(n => enabledNames.includes(n)) : [];
         const ordered = seq.concat(enabledNames.filter(n => !seq.includes(n)));
         const disabled = Object.keys(fv3AsInfo).filter(n => !enabledNames.includes(n))
             .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
