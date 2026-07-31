@@ -6,14 +6,19 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.08.01.1">
-<!ENTITY md5 "547a1d629df4e615a6422c6bcb959945">
+<!ENTITY version "2026.08.01.2">
+<!ENTITY md5 "ff611fa7d7edb8979dfdfd64068aaf23">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/197223-plugin-folderview3/" min="7.0.0">
     <CHANGES>
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
+
+###2026.08.01.2
+- Added: Autostart tab (issue #49) — set a global container start order that cuts across folders, with drag-and-drop ordering, per-container wait times and docker-style autostart toggles
+- Added: three start-order modes — Folder-based (today's behaviour, default), Custom sequence (overrides the Docker page order and survives reboots), Off (FolderView3 never writes the start order)
+- Added: full backups now include the autostart order; importing a backup restores and applies it
 
 ###2026.08.01.1
 - Fixed: FV3 folders now actually populate in the Unraid 7.2+ native Docker organizer — the API returns docker-style container names (/plex) that never matched, so mirrored folders were always created empty
