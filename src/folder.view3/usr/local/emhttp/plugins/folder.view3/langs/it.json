@@ -268,5 +268,14 @@
     "apply": "Applica",
     "css-customize": "Personalizza",
     "css-url-warning": "Il tuo CSS contiene riferimenti url(). Verifica che questi URL siano affidabili prima di salvare.",
-    "dashboard-general-heading": "Generale"
+    "dashboard-general-heading": "Generale",
+    "autostart-mode": "Modalità ordine di avvio:",
+    "autostart-mode-folder": "In base alle cartelle (predefinito)",
+    "autostart-mode-custom": "Sequenza personalizzata",
+    "autostart-mode-off": "Disattivato (FolderView3 non scrive mai l'ordine di avvio)",
+    "autostart-sequence": "Sequenza di avvio",
+    "autostart-not-started": "Senza avvio automatico",
+    "autostart-col-container": "Container",
+    "autostart-col-folder": "Cartella",
+    "autostart-col-wait": "Attesa (s)"
 }

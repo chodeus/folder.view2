@@ -25,6 +25,7 @@ require_once('/usr/local/emhttp/plugins/folder.view3/langs/script.php');
     <button class="fv3-page-tab fv3-page-tab-active" data-tab="backup" data-i18n="backup-restore">Backup</button>
     <button class="fv3-page-tab" data-tab="dashboard" data-i18n="dashboard-settings">Dashboard</button>
     <button class="fv3-page-tab" data-tab="defaults" data-i18n="folder-defaults">Defaults</button>
+    <button class="fv3-page-tab" data-tab="autostart" data-i18n="autostart">Autostart</button>
     <button class="fv3-page-tab" data-tab="css" data-i18n="css-tool">CSS</button>
 </div>
 
@@ -585,6 +586,53 @@ require_once('/usr/local/emhttp/plugins/folder.view3/langs/script.php');
         <button onclick="fv3SubmitSettings()" data-i18n="apply">Apply</button>
         <button onclick="fv3CancelSettings()" data-i18n="reset">Reset</button>
         <button id="fv3-apply-defaults"><i class="fa fa-magic" aria-hidden="true"></i> <span data-i18n="apply-defaults">Apply Defaults to All Folders</span></button>
+    </div>
+</div>
+
+<div class="fv3-page-panel" id="fv3-panel-autostart" style="display:none">
+    <div class="basic">
+        <dl>
+            <dt><label for="fv3-autostart-mode" data-i18n="autostart-mode">Start order mode:</label></dt>
+            <dd>
+                <select id="fv3-autostart-mode">
+                    <option value="folder" data-i18n="autostart-mode-folder">Folder-based (default)</option>
+                    <option value="custom" data-i18n="autostart-mode-custom">Custom sequence</option>
+                    <option value="off" data-i18n="autostart-mode-off">Off (FolderView3 never writes the start order)</option>
+                </select>
+            </dd>
+        </dl>
+        <blockquote class="inline_help">
+            <p>Folder-based keeps today's behaviour: the container start order follows your folder layout on the Docker page. Custom sequence uses the order below instead — it cuts across folders and overrides the Docker page order, and survives reboots. Off hands the start order fully back to Unraid; FolderView3 stops writing it entirely.</p>
+        </blockquote>
+    </div>
+
+    <dt class="fv3-section-heading" data-i18n="autostart-sequence">Startup sequence</dt>
+    <p class="fv3-backup-hint">Drag rows to set the global start order (top starts first). Wait is the pause in seconds after that container starts. Editable only while Start order mode is set to Custom sequence; changes apply on Apply.</p>
+    <div class="fv3-folder-table-wrap">
+        <table class="fv3-folder-table fv3-as-table fv3-as-seq-table">
+            <thead>
+                <tr>
+                    <th data-i18n="autostart-col-container">Container</th>
+                    <th data-i18n="autostart-col-folder">Folder</th>
+                    <th data-i18n="autostart">Autostart</th>
+                    <th data-i18n="autostart-col-wait">Wait (s)</th>
+                </tr>
+            </thead>
+            <tbody id="fv3-as-rows"></tbody>
+        </table>
+    </div>
+
+    <dt class="fv3-section-heading" data-i18n="autostart-not-started">Not autostarted</dt>
+    <p class="fv3-backup-hint">Containers that don't start automatically. Switch one on to add it to the end of the sequence.</p>
+    <div class="fv3-folder-table-wrap">
+        <table class="fv3-folder-table fv3-as-table">
+            <tbody id="fv3-as-off-rows"></tbody>
+        </table>
+    </div>
+
+    <div class="fv3-button-bar">
+        <button onclick="fv3SubmitAutostart()" data-i18n="apply">Apply</button>
+        <button onclick="fv3CancelAutostart()" data-i18n="reset">Reset</button>
     </div>
 </div>
 

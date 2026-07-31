@@ -138,7 +138,7 @@
     "expand-dashboard": "Rozwinięty w zakładce Pulpit:",
     "expand-dashboard-tooltip": "Folder będzie domyślnie rozwinięty podczas ładowania Dashboardu.",
     "regex": "Regex:",
-    "regex-tooltip": "Automatycznie dołączaj kontenery, których nazwy pasują do wzorca tekstowego.<br><b>plex</b> — pasuje do każdego kontenera z \u201eplex\u201d w nazwie<br><b>^media-</b> — pasuje do kontenerów zaczynających się od \u201emedia-\u201d<br><b>arr$</b> — pasuje do kontenerów kończących się na \u201earr\u201d (sonarr, radarr itp.)<br><b>^</b> — uniwersalny: pasuje do każdej nazwy, więc ten folder zbiera kontenery nieprzypisane do innego folderu ani przez niego dopasowane (umieść go na końcu)<br><a href=\"https://regex101.com/\" target=\"_blank\">Przetestuj wzorzec tutaj</a>.<br>Edycja tego pola zresetuje ręczne wybory kontenerów.",
+    "regex-tooltip": "Automatycznie dołączaj kontenery, których nazwy pasują do wzorca tekstowego.<br><b>plex</b> — pasuje do każdego kontenera z „plex” w nazwie<br><b>^media-</b> — pasuje do kontenerów zaczynających się od „media-”<br><b>arr$</b> — pasuje do kontenerów kończących się na „arr” (sonarr, radarr itp.)<br><b>^</b> — uniwersalny: pasuje do każdej nazwy, więc ten folder zbiera kontenery nieprzypisane do innego folderu ani przez niego dopasowane (umieść go na końcu)<br><a href=\"https://regex101.com/\" target=\"_blank\">Przetestuj wzorzec tutaj</a>.<br>Edycja tego pola zresetuje ręczne wybory kontenerów.",
     "submit": "Zatwierdź",
     "cancel": "Anuluj",
     "delete": "Delete",
@@ -146,7 +146,7 @@
     "delete-folder-confirm-title": "Delete folder?",
     "delete-folder-confirm-text": "This will permanently delete the folder \"$1\". The containers/VMs inside are NOT deleted — they return to the main list.",
     "order": "Kolejność:",
-    "order-tooltip": "Przeciągnij i upuść wiersze, aby zmienić kolejność kontenerów. Zaznacz \u201eDołączony\u201d, aby dodać kontener, \u201eUkryj podgląd\u201d, aby wykluczyć go z wiersza podglądu. Edycja regex resetuje ręczne wybory.",
+    "order-tooltip": "Przeciągnij i upuść wiersze, aby zmienić kolejność kontenerów. Zaznacz „Dołączony”, aby dodać kontener, „Ukryj podgląd”, aby wykluczyć go z wiersza podglądu. Edycja regex resetuje ręczne wybory.",
     "table-name": "Nazwa",
     "table-included": "Uwzględniony",
     "table-hide-preview": "Ukryj podgląd",
@@ -268,5 +268,14 @@
     "apply": "Zastosuj",
     "css-customize": "Dostosuj",
     "css-url-warning": "Twój CSS zawiera odniesienia url(). Sprawdź, czy te adresy URL są zaufane przed zapisaniem.",
-    "dashboard-general-heading": "Ogólne"
+    "dashboard-general-heading": "Ogólne",
+    "autostart-mode": "Tryb kolejności startu:",
+    "autostart-mode-folder": "Wg folderów (domyślnie)",
+    "autostart-mode-custom": "Własna kolejność",
+    "autostart-mode-off": "Wyłączone (FolderView3 nigdy nie zapisuje kolejności startu)",
+    "autostart-sequence": "Kolejność startu",
+    "autostart-not-started": "Bez autostartu",
+    "autostart-col-container": "Kontener",
+    "autostart-col-folder": "Folder",
+    "autostart-col-wait": "Oczekiwanie (s)"
 }

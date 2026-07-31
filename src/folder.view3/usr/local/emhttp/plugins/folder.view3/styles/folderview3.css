@@ -574,3 +574,31 @@
         margin-right: 0;
     }
 }
+
+/* Autostart tab */
+.fv3-as-table .fv3-as-item[draggable="true"] {
+    cursor: move;
+}
+.fv3-as-table .fv3-as-item.fv3-as-dragging {
+    opacity: 0.5;
+}
+.fv3-as-table td.fv3-as-name img.img {
+    width: 24px;
+    height: 24px;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+.fv3-as-table input.fv3-as-wait {
+    width: 5em;
+}
+#fv3-as-off-rows .fv3-as-item td:first-child {
+    opacity: 0.6;
+}
+.fv3-as-table.fv3-as-locked .fv3-as-toggle-cell,
+.fv3-as-table.fv3-as-locked input.fv3-as-wait {
+    pointer-events: none;
+    opacity: 0.5;
+}
+.fv3-as-table.fv3-as-locked .fv3-as-item {
+    cursor: default;
+}

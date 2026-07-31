@@ -177,6 +177,86 @@
         return json_encode(array_values($parsedIni ?: []));
     }
 
+    function fv3_autostart_file(): string {
+        $dockerManPaths = @parse_ini_file('/boot/config/plugins/dockerMan/dockerMan.cfg') ?: [];
+        return $dockerManPaths['autostart-file'] ?? "/var/lib/docker/unraid-autostart";
+    }
+
+    function readAutostartConfig(): array {
+        global $configDir;
+        $cfg = fv3_read_json("$configDir/autostart.json");
+        $mode = $cfg['mode'] ?? 'folder';
+        if (!in_array($mode, ['folder', 'custom', 'off'], true)) $mode = 'folder';
+        $sequence = [];
+        foreach ((array)($cfg['sequence'] ?? []) as $name) {
+            // docker name charset — a crafted config entry must not smuggle markup or newlines into the autostart file
+            if (is_string($name) && preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/', $name)) $sequence[] = $name;
+        }
+        return ['mode' => $mode, 'sequence' => array_values(array_unique($sequence))];
+    }
+
+    function updateAutostartConfig(string $mode, array $sequence, array $waits): array {
+        global $configDir;
+        if (!in_array($mode, ['folder', 'custom', 'off'], true)) return ['error' => 'Invalid mode'];
+        $cleanSeq = [];
+        foreach ($sequence as $name) {
+            if (is_string($name) && preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/', $name)) $cleanSeq[] = $name;
+            if (count($cleanSeq) >= 500) break;
+        }
+        $cleanSeq = array_values(array_unique($cleanSeq));
+        $ok = fv3_atomic_write("$configDir/autostart.json", json_encode(['mode' => $mode, 'sequence' => $cleanSeq], JSON_PRETTY_PRINT));
+        if (!$ok) return ['error' => 'Failed to write autostart config'];
+
+        // Fold wait edits into the live file — a name only matches a line that already has autostart enabled
+        $autoStartFile = fv3_autostart_file();
+        if (!empty($waits) && file_exists($autoStartFile)) {
+            $lines = @file($autoStartFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+            $changed = false;
+            foreach ($lines as $i => $line) {
+                $name = explode(' ', $line, 2)[0];
+                if (array_key_exists($name, $waits)) {
+                    $wait = max(0, min(3600, (int)$waits[$name]));
+                    $newLine = rtrim($name . ' ' . ($wait > 0 ? $wait : ''));
+                    if ($newLine !== $line) { $lines[$i] = $newLine; $changed = true; }
+                }
+            }
+            if ($changed) file_put_contents($autoStartFile, implode("\n", $lines) . "\n", LOCK_EX);
+        }
+
+        // Re-assert order under the saved mode — saving folder mode instantly restores folder-derived order
+        if ($mode !== 'off') syncContainerOrder('docker');
+        return ['success' => true, 'mode' => $mode, 'sequence' => $cleanSeq];
+    }
+
+    // Reorders the existing autostart lines to the saved custom sequence. Waits ride along
+    // verbatim; enabled-but-unsequenced containers keep their current relative order at the end.
+    function fv3_apply_custom_autostart(array $allContainerNames, bool $ctListComplete): void {
+        $autoStartFile = fv3_autostart_file();
+        if (!file_exists($autoStartFile)) return;
+        $sequence = readAutostartConfig()['sequence'];
+        $autoStartLines = @file($autoStartFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        $autoStartMap = [];
+        foreach ($autoStartLines as $line) {
+            $autoStartMap[explode(' ', $line, 2)[0]] = $line;
+        }
+        // Same #214/#231 guard as the folder path — a degraded Docker read must not prune entries
+        if ($ctListComplete) {
+            foreach ($autoStartMap as $name => $line) {
+                if (!in_array($name, $allContainerNames)) unset($autoStartMap[$name]);
+            }
+        }
+        $newAutoStart = [];
+        foreach ($sequence as $name) {
+            if (isset($autoStartMap[$name])) {
+                $newAutoStart[] = $autoStartMap[$name];
+                unset($autoStartMap[$name]);
+            }
+        }
+        foreach ($autoStartMap as $line) { $newAutoStart[] = $line; }
+        file_put_contents($autoStartFile, implode("\n", $newAutoStart) . "\n", LOCK_EX);
+        fv3_debug_log("fv3_apply_custom_autostart: wrote " . count($newAutoStart) . " entries (" . count($sequence) . " sequenced)");
+    }
+
     function syncContainerOrder(string $type): void {
         // Rewrites the autostart file to match what FV3 renders on screen — top-to-bottom,
         // folder members left-to-right in their editor-chosen order. Render order itself is
@@ -186,6 +266,10 @@
         fv3_debug_log("syncContainerOrder called for type: $type");
 
         if ($type !== 'docker') { return; }
+
+        $autostartMode = readAutostartConfig()['mode'];
+        // 'off' = FV3 never writes the autostart file — pure stock Unraid behaviour
+        if ($autostartMode === 'off') { fv3_debug_log("syncContainerOrder: autostart mode off, skipping"); return; }
 
         $prefsFile = "/boot/config/plugins/dockerMan/userprefs.cfg";
         $foldersFile = "$configDir/docker.json";
@@ -198,6 +282,12 @@
         $allContainerNames = array_values(array_filter($ctNamesRaw, function($n) { return $n !== ''; }));
         // Prune below only on a complete, fully-named container list — a degraded Docker read must not wipe autostart entries (#214)
         $ctListComplete = !empty($ctNamesRaw) && !in_array('', $ctNamesRaw, true);
+
+        // 'custom' = the Autostart tab's saved sequence overrides folder-derived order entirely
+        if ($autostartMode === 'custom') {
+            fv3_apply_custom_autostart($allContainerNames, $ctListComplete);
+            return;
+        }
 
         $folderContainers = [];
         $folderNames = [];
@@ -300,8 +390,7 @@
 
         // Rewrite autostart file in $newOrder sequence. userprefs.cfg is NOT touched —
         // Unraid owns it, and writes it only when the user explicitly drag-reorders.
-        $dockerManPaths = @parse_ini_file('/boot/config/plugins/dockerMan/dockerMan.cfg') ?: [];
-        $autoStartFile = $dockerManPaths['autostart-file'] ?? "/var/lib/docker/unraid-autostart";
+        $autoStartFile = fv3_autostart_file();
         if (file_exists($autoStartFile)) {
             $autoStartLines = @file($autoStartFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
             $autoStartMap = [];
@@ -783,6 +872,7 @@
             'docker' => fv3_read_json("$configDir/docker.json"),
             'vm' => fv3_read_json("$configDir/vm.json"),
             'settings' => fv3_read_json("$configDir/settings.json"),
+            'autostart' => fv3_read_json("$configDir/autostart.json"),
             'css_config' => fv3_read_json("$configDir/css-config.json"),
             'custom_styles' => []
         ];
@@ -818,7 +908,7 @@
         if (!$bundle || !isset($bundle['fv3_export_version'])) return ['error' => 'Invalid FV3 export file'];
         $restored = [];
         if (!is_dir($configDir)) @mkdir($configDir, 0770, true);
-        foreach (['docker', 'vm', 'settings', 'css_config'] as $key) {
+        foreach (['docker', 'vm', 'settings', 'autostart', 'css_config'] as $key) {
             if (!isset($bundle[$key]) || !is_array($bundle[$key])) continue;
             $data = $bundle[$key];
             // Folder maps are id => folder — allowlist the id keys (same charset as update.php) so a crafted
@@ -859,6 +949,8 @@
         if (isset($bundle['css_config']) && is_array($bundle['css_config'])) {
             generateCssFile($bundle['css_config']);
         }
+        // apply the restored folder layout / autostart mode to the live start order immediately
+        syncContainerOrder('docker');
         return ['success' => true, 'restored' => $restored];
     }
 
@@ -1084,7 +1176,7 @@
             // Prune stale autostart entries only on a complete, fully-named container list.
             // A failed/partial Docker read (empty $cts, or any entry without a name) must NOT prune, or a transient blip wipes/curtails the file.
             $ctNames = array_map(function($c) { return ltrim($c['Names'][0] ?? '', '/'); }, $cts);
-            if (!empty($ctNames) && !in_array('', $ctNames, true)) {
+            if (readAutostartConfig()['mode'] !== 'off' && !empty($ctNames) && !in_array('', $ctNames, true)) {
                 $cleanedLines = array_filter($autoStartLines, function($line) use ($ctNames) {
                     return in_array(explode(' ', $line, 2)[0], $ctNames, true);
                 });

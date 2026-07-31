@@ -609,6 +609,7 @@ $('#fv3-import-all').on('change', function() {
             if (parsed.docker && Object.keys(parsed.docker).length) items.push(Object.keys(parsed.docker).length + ' Docker folders');
             if (parsed.vm && Object.keys(parsed.vm).length) items.push(Object.keys(parsed.vm).length + ' VM folders');
             if (parsed.settings && Object.keys(parsed.settings).length) items.push('settings');
+            if (parsed.autostart && Object.keys(parsed.autostart).length) items.push('autostart order');
             if (parsed.css_config && Object.keys(parsed.css_config).length) items.push('CSS config');
             if (parsed.custom_styles && Object.keys(parsed.custom_styles).length) items.push(Object.keys(parsed.custom_styles).length + ' custom CSS files');
             if (parsed.css_skipped) items.push('(custom CSS excluded — too large)');
@@ -635,6 +636,162 @@ $('#fv3-import-all').on('change', function() {
     };
     reader.readAsText(file);
 });
+
+// ---- Autostart tab ----
+let fv3AsSnapshot = null;
+let fv3AsInfo = {};
+let fv3AsLoadStarted = false;
+
+const fv3AsFolderOf = (name) => {
+    for (const folder of Object.values(dockers)) {
+        if (Array.isArray(folder.containers) && folder.containers.includes(name)) return folder.name || '';
+    }
+    return '';
+};
+
+const fv3AsRowHtml = (name, wait, enabled) => {
+    const icon = (fv3AsInfo[name] && fv3AsInfo[name].icon) || '/plugins/dynamix.docker.manager/images/question.png';
+    const folder = fv3AsFolderOf(name);
+    return `<tr class="fv3-as-item" data-name="${escapeHtml(name)}"${enabled ? ' draggable="true"' : ''}>
+        <td class="fv3-as-name"><img src="${escapeHtml(icon)}" class="img" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';">${escapeHtml(name)}</td>
+        <td>${folder ? `<span class="fv3-scope-badge">${escapeHtml(folder)}</span>` : ''}</td>
+        <td class="fv3-as-toggle-cell"><input type="checkbox" class="fv3-as-toggle fv3-checkbox"${enabled ? ' checked' : ''}></td>
+        <td><input type="number" class="fv3-as-wait" min="0" max="3600" value="${Number.isFinite(wait) ? wait : 0}"${enabled ? '' : ' disabled'}></td>
+    </tr>`;
+};
+
+const fv3AsSortTable = (e) => {
+    e.preventDefault();
+    const sib = [...$('#fv3-as-rows .fv3-as-item:not(.fv3-as-dragging)')];
+    const bound = e.delegateTarget.getBoundingClientRect();
+    const near = sib.find(el => e.clientY - bound.top <= el.offsetTop + el.offsetHeight / 2);
+    if (near) $(near).before($('.fv3-as-dragging'));
+    else $('#fv3-as-rows').append($('.fv3-as-dragging'));
+};
+
+// the sequence is only editable in custom mode — folder/off show a read-only view
+const fv3AsApplyModeState = () => {
+    const custom = $('#fv3-autostart-mode').val() === 'custom';
+    $('#fv3-as-rows .fv3-as-item').attr('draggable', custom ? 'true' : 'false');
+    $('#fv3-as-rows .fv3-as-wait').prop('disabled', !custom);
+    $('.fv3-as-table').toggleClass('fv3-as-locked', !custom);
+};
+
+const fv3AsBindOnce = () => {
+    $('#fv3-autostart-mode').on('change', fv3AsApplyModeState);
+    $('.fv3-as-seq-table').on('dragover', fv3AsSortTable).on('dragenter', (e) => { e.preventDefault(); });
+    $(document).on('dragstart', '#fv3-as-rows .fv3-as-item', function() { this.classList.add('fv3-as-dragging'); });
+    $(document).on('dragend', '#fv3-as-rows .fv3-as-item', function() { this.classList.remove('fv3-as-dragging'); });
+    $(document).on('touchstart', '#fv3-as-rows .fv3-as-item[draggable="true"]', function() { this.classList.add('fv3-as-dragging'); });
+    $(document).on('touchmove', '#fv3-as-rows .fv3-as-item', function(e) {
+        if (!this.classList.contains('fv3-as-dragging')) return;
+        e.preventDefault();
+        const touch = e.originalEvent.touches[0];
+        fv3AsSortTable({ clientY: touch.clientY, preventDefault: () => {}, delegateTarget: this.closest('table') });
+    });
+    $(document).on('touchend', '#fv3-as-rows .fv3-as-item', function() { this.classList.remove('fv3-as-dragging'); });
+    // toggling moves the row between the sequence (end) and the not-autostarted section
+    $(document).on('change', '.fv3-as-table .fv3-as-toggle', function() {
+        const $tr = $(this).closest('tr');
+        const on = this.checked;
+        $tr.find('.fv3-as-wait').prop('disabled', !on);
+        if (on) { $tr.attr('draggable', 'true'); $('#fv3-as-rows').append($tr); }
+        else { $tr.removeAttr('draggable'); $tr.find('.fv3-as-wait').val(0); $('#fv3-as-off-rows').append($tr); }
+    });
+};
+
+const fv3LoadAutostart = async () => {
+    try {
+        const [as, info] = (await Promise.all([
+            $.get('/plugins/folder.view3/server/read_autostart.php').promise(),
+            $.get('/plugins/folder.view3/server/read_info.php?type=docker').promise()
+        ])).map(r => fv3SafeParse(r, {}));
+        fv3AsInfo = {};
+        for (const [name, ct] of Object.entries(info)) {
+            // only dockerman-managed containers participate in Unraid autostart
+            if (ct && ct.info && ct.info.State && ct.info.State.manager && ct.info.State.manager !== 'dockerman') continue;
+            fv3AsInfo[name] = { icon: (ct && ct.info && ct.info.Config && ct.info.Config.Labels && ct.info.Config.Labels['net.unraid.docker.icon']) || '' };
+        }
+        const fileEntries = as.autostart || [];
+        const enabledNames = fileEntries.map(e => e.name);
+        const waits = {};
+        fileEntries.forEach(e => { waits[e.name] = e.wait || 0; });
+        // saved sequence orders the enabled rows; live file order seeds anything unsequenced
+        const seq = (as.sequence || []).filter(n => enabledNames.includes(n));
+        const ordered = seq.concat(enabledNames.filter(n => !seq.includes(n)));
+        const disabled = Object.keys(fv3AsInfo).filter(n => !enabledNames.includes(n))
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+        $('#fv3-autostart-mode').val(as.mode || 'folder');
+        $('#fv3-as-rows').html(ordered.map(n => fv3AsRowHtml(n, waits[n] || 0, true)).join(''));
+        $('#fv3-as-off-rows').html(disabled.map(n => fv3AsRowHtml(n, 0, false)).join(''));
+        $('.fv3-as-table input.fv3-as-toggle').switchButton({ labels_placement: 'right', off_label: 'OFF', on_label: 'ON' });
+        fv3AsApplyModeState();
+        const toggles = {};
+        ordered.forEach(n => { toggles[n] = true; });
+        disabled.forEach(n => { toggles[n] = false; });
+        fv3AsSnapshot = { mode: as.mode || 'folder', sequence: [...ordered], waits: { ...waits }, toggles };
+    } catch (e) {
+        console.error('[FV3] Failed to load autostart tab:', e);
+        swal({ title: 'Error', text: 'Failed to load autostart data.', type: 'error' });
+    }
+};
+
+const fv3AsCollect = () => {
+    const sequence = $('#fv3-as-rows .fv3-as-item').map((_, tr) => tr.getAttribute('data-name')).get();
+    const waits = {};
+    const toggles = {};
+    $('.fv3-as-table .fv3-as-item').each(function() {
+        const name = this.getAttribute('data-name');
+        toggles[name] = $(this).find('.fv3-as-toggle').is(':checked');
+        const w = parseInt($(this).find('.fv3-as-wait').val(), 10);
+        waits[name] = Number.isFinite(w) && w > 0 ? w : 0;
+    });
+    return { mode: $('#fv3-autostart-mode').val(), sequence, waits, toggles };
+};
+
+const fv3IsAutostartDirty = () => {
+    if (!fv3AsSnapshot) return false;
+    const cur = fv3AsCollect();
+    if (cur.mode !== fv3AsSnapshot.mode) return true;
+    if (cur.sequence.join('\n') !== fv3AsSnapshot.sequence.join('\n')) return true;
+    for (const [name, on] of Object.entries(cur.toggles)) {
+        if ((fv3AsSnapshot.toggles[name] || false) !== on) return true;
+    }
+    for (const [name, w] of Object.entries(cur.waits)) {
+        if ((fv3AsSnapshot.waits[name] || 0) !== w) return true;
+    }
+    return false;
+};
+
+const fv3CancelAutostart = () => { if (fv3AsSnapshot) fv3LoadAutostart(); };
+
+const fv3SubmitAutostart = async () => {
+    if (!fv3AsSnapshot) return;
+    const cur = fv3AsCollect();
+    try {
+        // autostart on/off goes through Unraid's own handler; the batch below re-asserts order after its re-sort
+        for (const [name, on] of Object.entries(cur.toggles)) {
+            if ((fv3AsSnapshot.toggles[name] || false) === on) continue;
+            // OFF must post the wait currently in the file — Unraid matches the whole "name wait" line
+            const wait = on ? (cur.waits[name] > 0 ? cur.waits[name] : '') : (fv3AsSnapshot.waits[name] > 0 ? fv3AsSnapshot.waits[name] : '');
+            await $.post('/plugins/dynamix.docker.manager/include/UpdateConfig.php', {
+                action: 'autostart', container: name, wait: wait, auto: on ? 'true' : 'false',
+                csrf_token: typeof csrf_token !== 'undefined' ? csrf_token : ''
+            }).promise();
+        }
+        await $.ajax({
+            url: '/plugins/folder.view3/server/update_autostart.php',
+            method: 'POST',
+            data: { mode: cur.mode, sequence: JSON.stringify(cur.sequence), waits: JSON.stringify(cur.waits) }
+        }).promise();
+        await fv3LoadAutostart();
+        swal({ title: 'Saved', text: 'Start order saved and applied.', type: 'success', timer: 1800 });
+    } catch (e) {
+        var msg = e.responseText || e.statusText || e.message || 'Unknown error';
+        console.error('[FV3] Failed to save autostart:', msg);
+        swal({ title: 'Error', text: 'Failed to save start order: ' + msg, type: 'error' });
+    }
+};
 
 // Page-level tab switching
 const fv3SettingDefaults = {
@@ -663,6 +820,8 @@ window.fv3SwitchTab = (function() {
             var isDirty = false;
             if (currentTab === 'dashboard' || currentTab === 'defaults') {
                 isDirty = fv3IsSettingsDirty();
+            } else if (currentTab === 'autostart') {
+                isDirty = fv3IsAutostartDirty();
             } else if (currentTab === 'css' && window.fv3IsCssDirty) {
                 isDirty = window.fv3IsCssDirty();
             }
@@ -681,6 +840,8 @@ window.fv3SwitchTab = (function() {
                     if (confirmed === true) {
                         if (fromTab === 'dashboard' || fromTab === 'defaults') {
                             fv3CancelSettings();
+                        } else if (fromTab === 'autostart') {
+                            fv3CancelAutostart();
                         } else if (fromTab === 'css' && window.fv3ResetCssDirty) {
                             window.fv3ResetCssDirty();
                         }
@@ -697,6 +858,16 @@ window.fv3SwitchTab = (function() {
         panels.forEach(function(p) {
             p.style.display = p.id === 'fv3-panel-' + tabName ? '' : 'none';
         });
+        if (tabName === 'autostart') {
+            if (!fv3AsLoadStarted) {
+                fv3AsLoadStarted = true;
+                fv3AsBindOnce();
+                fv3LoadAutostart();
+            } else if (!fv3IsAutostartDirty()) {
+                // re-entering refreshes from the live file so docker-page edits always show
+                fv3LoadAutostart();
+            }
+        }
     }
 
     tabs.forEach(function(t) {
@@ -715,7 +886,8 @@ if (typeof initab === 'function') {
     window.initab = function(url) {
         const cssDirty = window.fv3IsCssDirty && window.fv3IsCssDirty();
         const settingsDirty = typeof fv3IsSettingsDirty === 'function' && fv3IsSettingsDirty();
-        if (cssDirty || settingsDirty) {
+        const autostartDirty = typeof fv3IsAutostartDirty === 'function' && fv3IsAutostartDirty();
+        if (cssDirty || settingsDirty || autostartDirty) {
             swal({
                 title: 'Unsaved Changes',
                 text: 'You have unsaved changes. Discard them?',

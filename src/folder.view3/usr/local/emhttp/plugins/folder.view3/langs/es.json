@@ -138,7 +138,7 @@
     "expand-dashboard": "Ampliado en el panel de Administración:",
     "expand-dashboard-tooltip": "La carpeta se expandirá por defecto al cargar el Dashboard.",
     "regex": "Regex:",
-    "regex-tooltip": "Incluir automáticamente contenedores cuyos nombres coincidan con un patrón de texto.<br><b>plex</b> \u2014 coincide con cualquier contenedor con \"plex\" en el nombre<br><b>^media-</b> \u2014 coincide con contenedores que empiezan con \"media-\"<br><b>arr$</b> \u2014 coincide con contenedores que terminan en \"arr\" (sonarr, radarr, etc.)<br><b>^</b> — comodín: coincide con cualquier nombre, por lo que esta carpeta recoge los contenedores no asignados a otra carpeta ni coincidentes con ella (colócala al final)<br><a href=\"https://regex101.com/\" target=\"_blank\">Prueba tu patrón aquí</a>.<br>Editar este campo restablecerá las selecciones manuales de contenedores.",
+    "regex-tooltip": "Incluir automáticamente contenedores cuyos nombres coincidan con un patrón de texto.<br><b>plex</b> — coincide con cualquier contenedor con \"plex\" en el nombre<br><b>^media-</b> — coincide con contenedores que empiezan con \"media-\"<br><b>arr$</b> — coincide con contenedores que terminan en \"arr\" (sonarr, radarr, etc.)<br><b>^</b> — comodín: coincide con cualquier nombre, por lo que esta carpeta recoge los contenedores no asignados a otra carpeta ni coincidentes con ella (colócala al final)<br><a href=\"https://regex101.com/\" target=\"_blank\">Prueba tu patrón aquí</a>.<br>Editar este campo restablecerá las selecciones manuales de contenedores.",
     "submit": "Enviar",
     "cancel": "Cancelar",
     "delete": "Delete",
@@ -161,7 +161,7 @@
     "file-manager": "Abrir File Manager",
     "custom-actions": "Acciones personalizadas",
     "custom-actions-folder": "Acciones personalizadas:",
-    "custom-actions-folder-tooltip": "<b>Nombre:</b> Solo el nombre de la acción.<br><b>Tipo:</b> Tipo de la acción.<br><ul><li><b>Estándar</b> \u2014 acción normal en contenedores Docker (iniciar, detener, ...).</li><li><b>Personalizado</b> \u2014 ejecutará un User Script (requiere el plugin User Scripts).</li></ul><b>Acción:</b> Acción a realizar.<br><ul><li><b>Ciclo</b> \u2014 alterna entre dos estados.</li><li><b>Establecer</b> \u2014 establece un estado.</li><li><b>Reiniciar</b> \u2014 reinicio básico.</li></ul><b>Contenedores:</b> Una lista de contenedores separados por coma (,).<br><b>Script:</b> Solo el nombre del script (<b>Los nombres distinguen mayúsculas y necesitan espacios</b>).<br><b>Argumentos:</b> Argumentos pasados al script.<br><b>Sync:</b> Si ejecutar el script en segundo plano o no.<br><b>Icono:</b> Icono de la acción, dejar vacío para predeterminado.",
+    "custom-actions-folder-tooltip": "<b>Nombre:</b> Solo el nombre de la acción.<br><b>Tipo:</b> Tipo de la acción.<br><ul><li><b>Estándar</b> — acción normal en contenedores Docker (iniciar, detener, ...).</li><li><b>Personalizado</b> — ejecutará un User Script (requiere el plugin User Scripts).</li></ul><b>Acción:</b> Acción a realizar.<br><ul><li><b>Ciclo</b> — alterna entre dos estados.</li><li><b>Establecer</b> — establece un estado.</li><li><b>Reiniciar</b> — reinicio básico.</li></ul><b>Contenedores:</b> Una lista de contenedores separados por coma (,).<br><b>Script:</b> Solo el nombre del script (<b>Los nombres distinguen mayúsculas y necesitan espacios</b>).<br><b>Argumentos:</b> Argumentos pasados al script.<br><b>Sync:</b> Si ejecutar el script en segundo plano o no.<br><b>Icono:</b> Icono de la acción, dejar vacío para predeterminado.",
     "custom-action": "<i class=\"fa fa-plus\" aria-hidden=\"true\"></i> Añadir una acción personalizada",
     "custom-action-tooltip": "Agregar botones personalizados al menú contextual de la carpeta para operaciones avanzadas.",
     "custom-actions-type": "Tipo:",
@@ -268,5 +268,14 @@
     "apply": "Aplicar",
     "css-customize": "Personalizar",
     "css-url-warning": "Tu CSS contiene referencias url(). Verifica que estas URLs sean confiables antes de guardar.",
-    "dashboard-general-heading": "General"
+    "dashboard-general-heading": "General",
+    "autostart-mode": "Modo de orden de arranque:",
+    "autostart-mode-folder": "Según carpetas (predeterminado)",
+    "autostart-mode-custom": "Secuencia personalizada",
+    "autostart-mode-off": "Desactivado (FolderView3 nunca escribe el orden de arranque)",
+    "autostart-sequence": "Secuencia de arranque",
+    "autostart-not-started": "Sin autoarranque",
+    "autostart-col-container": "Contenedor",
+    "autostart-col-folder": "Carpeta",
+    "autostart-col-wait": "Espera (s)"
 }
