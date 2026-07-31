@@ -140,7 +140,9 @@ const createFolders = async () => {
             fv3Debug('dashboard', 'API update statuses received:', statuses);
             for (const [folderId, folder] of Object.entries(globalFolders.docker || {})) {
                 if (!folder.containers) continue;
-                for (const containerName of Object.keys(folder.containers)) {
+                // containers stays an array on the dashboard (never replaced like docker.js does)
+                const memberNames = Array.isArray(folder.containers) ? folder.containers : Object.keys(folder.containers);
+                for (const containerName of memberNames) {
                     if (statuses[containerName] === 'UPDATE_AVAILABLE') {
                         folder.status.upToDate = false;
                         break;
