@@ -5,9 +5,9 @@
 <!ENTITY github "&author;/&name;">
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
-<!ENTITY version "2026.08.01">
-<!ENTITY md5 "b984d1f45aea365757426c1f177788f4">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
+<!ENTITY version "2026.08.01.7">
+<!ENTITY md5 "d85789aee494523c7321f50c3320b193">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/197223-plugin-folderview3/" min="7.0.0">
@@ -15,27 +15,98 @@
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
 
-###2026.08.01
-- Full integration of a custom container autostart order. Defined in Plugin settings, now giving the option to override folder position order on the Docker page
-- Improved Unraid API integration with native Docker organizer
-- Blocked 'root' from being used as a folder name as this is used by Unraid's Docker organizer
+###2026.08.01.7
+- Fixed: organizer folder-registry cleanup and writes are skipped whenever the registry can't be read
 
-###2026.07.17
-- New "Open WebUI" preview context — clicking a container's icon (or Dashboard tile) opens its WebUI in a new tab (#41)
-- Containers explicitly assigned to a folder can no longer be captured by another folder's regex (#46)
-- A "^" regex folder now works as a catch-all, collecting containers not assigned to or matched by any other folder
-- A match-all regex no longer crashes the Dashboard folder render; a failing folder shows an error banner and the rest keep rendering (#47)
-- Folder views no longer briefly flash the plain container/VM list before folders appear
-- A missing fallback icon no longer causes endless 404 retries (unraid/webgui#2691)
-- Editing a regex folder no longer permanently bakes its regex matches into the member list
-- A degraded Docker read during a folder save can no longer wipe container autostart settings
-- Failed folder-data loads reveal the native list immediately with a single error banner naming any broken folder
+###2026.08.01.6
+- Added: deleting or renaming an FV3 folder now also removes its counterpart in the Unraid Docker organizer (folders created natively by the user are never touched)
+- Fixed: toggling autostart in the Autostart tab can no longer trip a stock Unraid edge that removes the wrong container's autostart entry when the wait was changed elsewhere mid-edit
+- Fixed: organizer sync failures now log a visible browser-console warning instead of failing silently
+- Fixed: Autostart tab form fields now have unique names (clears the browser autofill warnings in dev tools)
+- Changed: the folder name 'root' (any case) is rejected — it is reserved by Unraid's Docker organizer
 
-###2026.07.08
-- Autostart and config files can no longer be accidentally wiped or corrupted
-- Security improvements and hardening
-- UI loading, compatibility, error handling/reporting and backup-import improvements
-- Package building and install-script improvements
+###2026.08.01.5
+- Added: type-to-jump on the Autostart tab — type a number in the position column to move a container straight to that spot in the sequence
+- Changed: the Autostart Apply/Reset buttons now sit right-aligned directly under the start-order mode selector; other settings panels keep their centered buttons
+- Fixed: a latent row-reorder trap when the autostart toggles initialise
+
+###2026.08.01.4
+- Added: position numbers in the Autostart sequence table
+- Changed: Apply/Reset buttons are now right-aligned consistently across all settings panels
+- Changed: the folder editor's Submit button is now labelled Apply, matching the other settings panels
+
+###2026.08.01.3
+- Fixed: sequence rows on the Autostart tab could still be dragged via the container icon while not in Custom sequence mode
+- Fixed: outside Custom mode the sequence table now shows the actual current start order instead of the remembered custom sequence
+- Changed: the Autostart tab's Apply/Reset buttons moved to the top of the panel
+
+###2026.08.01.2
+- Added: Autostart tab (issue #49) — set a global container start order that cuts across folders, with drag-and-drop ordering, per-container wait times and docker-style autostart toggles
+- Added: three start-order modes — Folder-based (today's behaviour, default), Custom sequence (overrides the Docker page order and survives reboots), Off (FolderView3 never writes the start order)
+- Added: full backups now include the autostart order; importing a backup restores and applies it
+
+###2026.08.01.1
+- Fixed: FV3 folders now actually populate in the Unraid 7.2+ native Docker organizer — the API returns docker-style container names (/plex) that never matched, so mirrored folders were always created empty
+- Fixed: the organizer mirror now moves containers instead of re-parenting copies — no more duplicate entries under the organizer root, and pre-existing duplicates self-heal on the next Docker page load
+- Fixed: the organizer mirror skips a folder whose members can't be resolved instead of emptying it
+- Fixed: folder update badges can now light up from the Dashboard's API update check
+
+###2026.07.17.1
+- Fixed: a degraded Docker API read during a folder save / order sync can no longer wipe container autostart settings (same guard as read-info)
+- Fixed: one broken folder config no longer hides the whole Docker/VM list — the other folders still render and an error banner names the failing folder
+- Fixed: a failed folder-data load now reveals the native list immediately instead of leaving it hidden until the 8-second failsafe
+- Fixed: a folder entry missing its name can no longer silently empty every regex folder's matches
+- Fixed: the folder editor icon preview now falls back correctly for external icon URLs that end in question.png
+
+###2026.07.14.1
+- Fixed: a missing fallback icon (question.png — Unraid can delete it during container updates, unraid/webgui#2691) no longer causes endless 404 retries; icon error handlers now fall back once and stop
+- Fixed: folders and containers with no icon set now render the fallback icon directly instead of erroring on every refresh
+
+###2026.07.13.1
+- Fixed: folder views no longer briefly flash Unraid's plain container/VM list before folders appear on the Docker, VM and Dashboard tabs
+- Added: the folder editor's Regex help now documents the "^" catch-all behaviour (collects containers not assigned to or matched by another folder)
+
+###2026.07.12.1
+- Fixed: a failed data load on the Dashboard no longer stacks two error banners for the same failure
+- Fixed: the folder editor's regex match list no longer claims containers that are label-assigned to another folder (matches how they actually render)
+
+###2026.07.11.2
+- Added: "Open WebUI" option for the Dashboard preview context (Settings → Dashboard) — expanded-folder tile clicks open the container's WebUI
+- Added: containers explicitly assigned to a folder can no longer be captured by another folder's regex — a "^" regex folder now works as a catch-all for unassigned containers, and its containers stay pickable in other folder editors (#46)
+- Fixed: a folder with a match-all regex (e.g. "^") no longer crashes the Dashboard folder render or hides all VM folders; a failing folder now shows an error banner and the rest keep rendering (#47)
+- Fixed: editing a regex folder no longer permanently bakes its current regex matches into the folder's member list
+
+###2026.07.11.1
+- Added: "Open WebUI" option in Preview Context — clicking a container's icon in the collapsed preview opens its WebUI in a new tab; containers without a WebUI keep the context menu (#41)
+
+###2026.07.08.2
+- Fixed: CSS Tool config-import note no longer wrongly says url() is stripped on save — url() is kept, so the note now asks you to verify the URLs are trusted
+
+###2026.07.08.1
+- Fixed: a transient Docker read error no longer wipes the container autostart file
+- Fixed: concurrent settings saves can no longer clobber each other during the atomic config write
+- Fixed: a failed encode or a full boot flash can no longer overwrite a good folder/settings file with an empty or truncated one
+
+###2026.07.07.1
+- Security: hardened theme/CSS upload and GitHub theme import (strict file-type, path and size re-validation)
+- Security: container WebUI links, shell labels and custom-action icons are now sanitised before rendering
+- Security: folder IDs are validated when restoring a full backup
+- Fixed: bulk start/stop/restart no longer leaves the loading spinner stuck when a container action fails
+- Fixed: adding a folder while the Dashboard is open no longer blanks the Dashboard until reload
+- Fixed: selecting a full backup file in the per-tab Docker/VM import now warns instead of creating broken folders
+- Fixed: editing a folder created by an older version no longer fails to open the edit form
+- Fixed: "hide update column" folders now span the Docker table correctly on all Unraid versions (7.0+)
+- Fixed: user-script custom actions and Dashboard folder context menus no longer error or strand the loading spinner on a just-added folder
+- Fixed: Dashboard bulk-action error popups now show the actual error message instead of "false"
+- Packaging: standard Slackware package naming and the install now downloads before replacing, so a failed update download no longer leaves the plugin uninstalled
+- Cleanup: delete-folder button no longer relies on !important
+
+###2026.07.03.2
+- Container-order sync now also locks the autostart-file write, completing the concurrent-write protection
+
+###2026.07.03.1
+- Custom CSS import now runs the same @import/expression/javascript: sanitizer as the CSS editor (closes an importAll bypass)
+- Docker autostart-file write in read-info is now locked to avoid concurrent-write corruption
 
 ###2026.06.25
 - Folders imported from folder.view2 now restore container/VM rename-tracking automatically on first load (no need to re-save each folder)
@@ -645,7 +716,7 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
 
     <!-- New source file -->
     <FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
-        <URL>https://raw.githubusercontent.com/&github;/main/archive/&name;-&version;-x86_64-1.txz</URL>
+        <URL>https://raw.githubusercontent.com/&github;/beta/archive/&name;-&version;-x86_64-1.txz</URL>
         <MD5>&md5;</MD5>
     </FILE>
 
