@@ -435,6 +435,11 @@ const syncHidePreview = ($row) => {
 
 // Serialize the form to a folder object, POST create/update, then return to the tab. Returns false.
 const submitForm = async (e) => {
+    // 'root' is reserved by Unraid's Docker organizer — server rejects it too
+    if (e.name.value.toString().trim().toLowerCase() === 'root') {
+        swal({ title: 'Reserved Name', text: "'root' is reserved by Unraid's Docker organizer — please pick another folder name.", type: 'error' });
+        return;
+    }
     const actions = $('input[name*="custom_action"]').map((i, e) => fv3SafeParse(atob($(e).val()), {})).get();
     const folder = {
         name: e.name.value.toString(),

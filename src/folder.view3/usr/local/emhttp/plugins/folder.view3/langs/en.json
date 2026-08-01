@@ -4,7 +4,7 @@
             "scolcipitato"
         ],
         "last-updated": "2023-11-29",
-		"locale": "en"
+        "locale": "en"
     },
     "add-folder": "Add Folder",
     "up-to-date": "up-to-date",
@@ -268,5 +268,14 @@
     "apply": "Apply",
     "css-customize": "Customize",
     "css-url-warning": "Your CSS contains url() references. Verify these URLs are trusted before saving.",
-    "dashboard-general-heading": "General"
+    "dashboard-general-heading": "General",
+    "autostart-mode": "Start order mode:",
+    "autostart-mode-folder": "Folder-based (default)",
+    "autostart-mode-custom": "Custom sequence",
+    "autostart-mode-off": "Off (FolderView3 never writes the start order)",
+    "autostart-sequence": "Startup sequence",
+    "autostart-not-started": "Not autostarted",
+    "autostart-col-container": "Container",
+    "autostart-col-folder": "Folder",
+    "autostart-col-wait": "Wait (s)"
 }

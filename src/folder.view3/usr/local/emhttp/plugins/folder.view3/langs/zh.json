@@ -185,7 +185,7 @@
     "customizations": "自定义",
     "on": "开",
     "off": "关",
-    "folderview3-desc": "FolderView3可以让你创建文件夹，将Docker和虚拟机进行分组，帮助合理规划。在使用docker-compose的情况下尤其有用。简单说明：在Docker/虚拟机页面的底部，在\u201c添加容器\u201d或\u201c添加虚拟机\u201d的按钮后面，会增加一个\u201c添加文件夹\u201d的按钮。",
+    "folderview3-desc": "FolderView3可以让你创建文件夹，将Docker和虚拟机进行分组，帮助合理规划。在使用docker-compose的情况下尤其有用。简单说明：在Docker/虚拟机页面的底部，在“添加容器”或“添加虚拟机”的按钮后面，会增加一个“添加文件夹”的按钮。",
     "action-add": "添加操作",
     "action-edit": "修改操作",
     "action-add-btn": "添加",
@@ -268,5 +268,14 @@
     "apply": "应用",
     "css-customize": "自定义",
     "css-url-warning": "你的 CSS 包含 url() 引用。保存前请确认这些 URL 是可信的。",
-    "dashboard-general-heading": "常规"
+    "dashboard-general-heading": "常规",
+    "autostart-mode": "启动顺序模式：",
+    "autostart-mode-folder": "按文件夹（默认）",
+    "autostart-mode-custom": "自定义顺序",
+    "autostart-mode-off": "关闭（FolderView3 不再写入启动顺序）",
+    "autostart-sequence": "启动顺序",
+    "autostart-not-started": "未自动启动",
+    "autostart-col-container": "容器",
+    "autostart-col-folder": "文件夹",
+    "autostart-col-wait": "等待（秒）"
 }

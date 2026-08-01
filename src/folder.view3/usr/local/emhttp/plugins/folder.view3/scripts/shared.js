@@ -1552,25 +1552,40 @@ window.fv3SyncOrganizer = async (folders) => {
 
     try {
         var data = await fv3GraphQL(
-            '{ docker { organizer { views { id flatEntries { id type name childrenIds } } } } }'
+            '{ docker { organizer { views { id rootId flatEntries { id type name childrenIds } } } } }'
         );
         var views = data && data.docker && data.docker.organizer && data.docker.organizer.views;
         if (!views || !views.length) { fv3Debug('OrgSync', 'No organizer views, skipping'); return; }
 
         var entries = views[0].flatEntries || [];
+        var rootId = views[0].rootId;
         var orgFolders = {};
         var orgEntries = {};
+        var containerIds = {};
+        var inRoot = {};
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i];
-            if (e.type === 'folder' || e.type === 'group') {
+            if (e.id === rootId) {
+                (e.childrenIds || []).forEach(function(id) { inRoot[id] = true; });
+            } else if (e.type === 'folder' || e.type === 'group') {
                 if (!orgFolders[e.name]) orgFolders[e.name] = e;
             } else {
-                orgEntries[e.name] = e.id;
+                // API returns docker-style names ('/plex') — strip the slash to match FV3 names
+                orgEntries[(e.name || '').replace(/^\//, '')] = e.id;
+                containerIds[e.id] = true;
             }
         }
 
+        // registry = organizer folders FV3 itself created — the only ones safe to delete on FV3 rename/delete
+        var registry = [], regOk = false;
+        try {
+            var regResp = await fetch('/plugins/folder.view3/server/read_organizer_registry.php', { credentials: 'same-origin' });
+            registry = (((await regResp.json()) || {}).folders) || [];
+            regOk = true;
+        } catch (eReg) { /* registry unavailable — skip all cleanup this round */ }
+
         var seen = {};
-        var created = 0, updated = 0;
+        var created = 0, updated = 0, deleted = 0;
 
         for (var fv3Id in folders) {
             var folder = folders[fv3Id];
@@ -1578,8 +1593,11 @@ window.fv3SyncOrganizer = async (folders) => {
             if (!name || seen[name]) continue;
             seen[name] = true;
 
-            var containerNames = folder.containers ? Object.keys(folder.containers) : [];
+            // containers is an array of names (dashboard) or a name-keyed object (docker page)
+            var containerNames = Array.isArray(folder.containers) ? folder.containers : Object.keys(folder.containers || {});
             var childIds = containerNames.map(function(n) { return orgEntries[n]; }).filter(Boolean);
+            // members exist but none resolved = lookup failure, not an empty folder — never strip
+            if (containerNames.length && !childIds.length) { fv3Debug('OrgSync', 'No members resolved for', name, '— skipping'); continue; }
 
             var existing = orgFolders[name];
             if (existing) {
@@ -1587,15 +1605,23 @@ window.fv3SyncOrganizer = async (folders) => {
                 (existing.childrenIds || []).forEach(function(id) { cur[id] = true; });
                 var want = {};
                 childIds.forEach(function(id) { want[id] = true; });
-                var curKeys = Object.keys(cur);
-                var wantKeys = Object.keys(want);
-                if (curKeys.length !== wantKeys.length || !wantKeys.every(function(id) { return cur[id]; })) {
+                // move, don't set: moveDockerEntriesToFolder detaches from every old parent (no root duplicates)
+                var toAdd = childIds.filter(function(id) { return !cur[id] || inRoot[id]; });
+                // containers dropped from the FV3 folder go back to root; never touch nested user folders
+                var toEvict = (existing.childrenIds || []).filter(function(id) { return containerIds[id] && !want[id]; });
+                if (toAdd.length) {
                     await fv3GraphQL(
-                        'mutation($fid: String!, $cids: [String!]!) { setDockerFolderChildren(folderId: $fid, childrenIds: $cids) { version } }',
-                        { fid: existing.id, cids: childIds }
+                        'mutation($ids: [String!]!, $fid: String!) { moveDockerEntriesToFolder(sourceEntryIds: $ids, destinationFolderId: $fid) { version } }',
+                        { ids: toAdd, fid: existing.id }
                     );
-                    updated++;
                 }
+                if (toEvict.length) {
+                    await fv3GraphQL(
+                        'mutation($ids: [String!]!, $fid: String!) { moveDockerEntriesToFolder(sourceEntryIds: $ids, destinationFolderId: $fid) { version } }',
+                        { ids: toEvict, fid: rootId }
+                    );
+                }
+                if (toAdd.length || toEvict.length) updated++;
             } else {
                 await fv3GraphQL(
                     'mutation($n: String!, $ids: [String!]) { createDockerFolderWithItems(name: $n, sourceEntryIds: $ids) { version } }',
@@ -1605,8 +1631,36 @@ window.fv3SyncOrganizer = async (folders) => {
             }
         }
 
-        if (created || updated) fv3Debug('OrgSync', 'Done:', { created: created, updated: updated });
+        // FV3-registered folders whose FV3 folder no longer exists (deleted or renamed) — remove the
+        // organizer twin; its containers return to the organizer root. Unregistered folders are never touched.
+        for (var d = 0; d < registry.length; d++) {
+            var staleName = registry[d];
+            if (regOk && !seen[staleName] && orgFolders[staleName] && orgFolders[staleName].id !== rootId) {
+                await fv3GraphQL(
+                    'mutation($ids: [String!]!) { deleteDockerEntries(entryIds: $ids) { version } }',
+                    { ids: [orgFolders[staleName].id] }
+                );
+                deleted++;
+            }
+        }
+        // registry follows the mirrored FV3 folder names (adopts folders created before the registry existed)
+        var newRegistry = Object.keys(seen).sort();
+        if (regOk && newRegistry.join('\n') !== registry.slice().sort().join('\n')) {
+            try {
+                await fetch('/plugins/folder.view3/server/update_organizer_registry.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    credentials: 'same-origin',
+                    body: 'folders=' + encodeURIComponent(JSON.stringify(newRegistry)) +
+                          '&csrf_token=' + encodeURIComponent(typeof csrf_token !== 'undefined' ? csrf_token : '')
+                });
+            } catch (eReg2) { /* flash write failed — retried next sync */ }
+        }
+
+        if (created || updated || deleted) fv3Debug('OrgSync', 'Done:', { created: created, updated: updated, deleted: deleted });
     } catch (e) {
+        // unconditional console.warn — a silent mirror failure hid a broken feature for two weeks
+        console.warn('[FV3] Organizer sync failed (non-fatal):', e.message);
         fv3DebugWarn('OrgSync', 'Sync failed (non-fatal):', e.message);
     }
 };
