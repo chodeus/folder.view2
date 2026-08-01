@@ -6,14 +6,17 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.08.01.6">
-<!ENTITY md5 "c03661d9669790a097bd81abb44ad162">
+<!ENTITY version "2026.08.01.7">
+<!ENTITY md5 "d85789aee494523c7321f50c3320b193">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/197223-plugin-folderview3/" min="7.0.0">
     <CHANGES>
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
+
+###2026.08.01.7
+- Fixed: organizer folder-registry cleanup and writes are skipped whenever the registry can't be read
 
 ###2026.08.01.6
 - Added: deleting or renaming an FV3 folder now also removes its counterpart in the Unraid Docker organizer (folders created natively by the user are never touched)
