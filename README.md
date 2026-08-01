@@ -27,7 +27,7 @@ Organize your Docker containers and VMs into collapsible folders on the Docker, 
 - **Unraid 7.2+ API integration** — hybrid GraphQL/PHP with automatic fallback for older versions
 - **Native organizer sync** — folder structure automatically syncs to Unraid's built-in Docker Organizer when available
 - **Bulk actions** — start, stop, restart, pause all containers in a folder
-- **Autostart control** — three modes in Settings → FolderView3 → Autostart: folder-based (start order follows your folder layout — the default), a custom global sequence with per-container wait times that cuts across folders and overrides the Docker page order, or off (FolderView3 leaves the start order entirely to Unraid). Stale entries from removed containers are cleaned up automatically.
+- **Autostart control** — set a custom global container start order (Settings → FolderView3 → Autostart) that overrides the Docker page folder order, with per-container wait times and autostart toggles
 
   <img src="img/autostartsequence.png" alt="Autostart sequence numbers" width="600">
 - **Compose & 3rd Party awareness** — handles Docker Compose and 3rd party containers
