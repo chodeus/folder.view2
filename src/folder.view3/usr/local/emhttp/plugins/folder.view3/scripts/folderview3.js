@@ -141,6 +141,31 @@ const downloadDocker = async (id) => {
     }
 };
 
+// A folder export is either one folder object or an id => folder map (both shapes are what
+// folder.view2 downloads). Neither carries a docker|vm marker — the caller supplies the type.
+const fv3IsFolderShaped = (o) => !!o && typeof o === 'object' && !Array.isArray(o)
+    && typeof o.name === 'string'
+    && (Array.isArray(o.containers) || (!!o.settings && typeof o.settings === 'object'));
+
+const fv3CountFolderExport = (parsed) => {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return 0;
+    if (fv3IsFolderShaped(parsed)) return 1;
+    const folders = Object.values(parsed);
+    return (folders.length && folders.every(fv3IsFolderShaped)) ? folders.length : 0;
+};
+
+const fv3ImportFolderMap = async (content, type) => {
+    if (content.name) {
+        await $.post('/plugins/folder.view3/server/create.php', { type: type, content: JSON.stringify(content) });
+    } else {
+        for (const [id, folder] of Object.entries(content)) {
+            await $.post('/plugins/folder.view3/server/update.php', { type: type, content: JSON.stringify(folder), id: id });
+        }
+        if (type === 'docker') await $.post('/plugins/folder.view3/server/sync_order.php', { type: 'docker' });
+    }
+    populateTable();
+};
+
 const importDocker = () => {
     let input = document.getElementById('fv3-import-docker-file');
     input.onchange = (e) => {
@@ -169,15 +194,7 @@ const importDocker = () => {
                 swal({ title: 'Wrong import', text: 'This is a full backup bundle — use "Import Everything" to restore it, or select a Docker folders export here.', type: 'error' });
                 return;
             }
-            if(content.name) {
-                await $.post('/plugins/folder.view3/server/create.php', { type: 'docker', content: JSON.stringify(content) });
-            } else {
-                for (const [id, folder] of Object.entries(content)) {
-                    await $.post('/plugins/folder.view3/server/update.php', { type: 'docker', content: JSON.stringify(folder), id: id });
-                }
-                await $.post('/plugins/folder.view3/server/sync_order.php', { type: 'docker' });
-            }
-            populateTable();
+            await fv3ImportFolderMap(content, 'docker');
         }
     }
     input.click();
@@ -211,14 +228,7 @@ const importVm = () => {
                 swal({ title: 'Wrong import', text: 'This is a full backup bundle — use "Import Everything" to restore it, or select a VM folders export here.', type: 'error' });
                 return;
             }
-            if(content.name) {
-                await $.post('/plugins/folder.view3/server/create.php', { type: 'vm', content: JSON.stringify(content) });
-            } else {
-                for (const [id, folder] of Object.entries(content)) {
-                    await $.post('/plugins/folder.view3/server/update.php', { type: 'vm', content: JSON.stringify(folder), id: id });
-                }
-            }
-            populateTable();
+            await fv3ImportFolderMap(content, 'vm');
         }
     }
     input.click();
@@ -595,6 +605,15 @@ const fv3ExportAll = async () => {
 };
 window.fv3ExportAll = fv3ExportAll;
 
+const fv3ImportFolderExport = async (content, type) => {
+    swal.close();
+    try {
+        await fv3ImportFolderMap(content, type);
+    } catch (err) {
+        swal({ title: 'Error', text: 'Import failed.', type: 'error' });
+    }
+};
+
 $('#fv3-import-all-btn').on('click', () => $('#fv3-import-all').click());
 $('#fv3-import-all').on('change', function() {
     const file = this.files[0];
@@ -604,7 +623,30 @@ $('#fv3-import-all').on('change', function() {
     reader.onload = async (e) => {
         try {
             const parsed = JSON.parse(e.target.result);
-            if (!parsed.fv3_export_version) { swal({ title: 'Error', text: 'Not a valid FV3 backup file.', type: 'error' }); return; }
+            if (!parsed.fv3_export_version) {
+                // folder.view2 exports land here — take them rather than dead-ending the user.
+                const count = fv3CountFolderExport(parsed);
+                if (!count) { swal({ title: 'Error', text: 'Not a valid FV3 backup file.', type: 'error' }); return; }
+                // The choice can't ride on the confirm/cancel boolean: swal reports ESC and Cancel
+                // identically, so a dismissal would silently import as whichever type lost the coin toss.
+                swal({
+                    title: 'Folder export detected',
+                    text: `<p>This file holds ${count} folder${count === 1 ? '' : 's'} — a FolderView2 or per-type export, not a full FV3 backup.</p>`
+                        + '<p>Import as:</p><p>'
+                        + '<button class="fv3-choice" style="margin:0 4px" data-fv3-type="docker">Docker folders</button>'
+                        + '<button class="fv3-choice" style="margin:0 4px" data-fv3-type="vm">VM folders</button></p>',
+                    html: true,
+                    showConfirmButton: false,
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancel'
+                });
+                // An inline onclick inside swal's own markup never fires — bind explicitly instead.
+                // The buttons exist synchronously once swal() has returned.
+                document.querySelectorAll('.sweet-alert button.fv3-choice').forEach(b => {
+                    b.addEventListener('click', () => fv3ImportFolderExport(parsed, b.dataset.fv3Type));
+                });
+                return;
+            }
             const items = [];
             if (parsed.docker && Object.keys(parsed.docker).length) items.push(Object.keys(parsed.docker).length + ' Docker folders');
             if (parsed.vm && Object.keys(parsed.vm).length) items.push(Object.keys(parsed.vm).length + ' VM folders');
