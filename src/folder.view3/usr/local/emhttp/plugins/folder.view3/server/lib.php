@@ -318,12 +318,21 @@
         // carries no Labels, so read them from the same raw endpoint readInfo() uses.
         $ctLabels = [];
         $rawCts = $dockerClient->getDockerJSON("/containers/json?all=1");
-        if (is_array($rawCts)) {
-            foreach ($rawCts as $rc) {
-                $rcName = ltrim($rc['Names'][0] ?? '', '/');
-                $rcLabel = $rc['Labels']['folder.view3'] ?? '';
-                if ($rcName !== '' && $rcLabel !== '') { $ctLabels[$rcName] = $rcLabel; }
+        // Fail closed. A failed or partial read yields no label claims, and the order below would
+        // then write label-assigned containers back out as unassigned — the same hazard $ctListComplete
+        // guards against above, so abort rather than fall through to the permissive path.
+        if (!is_array($rawCts) || count($rawCts) < count($allContainerNames)) {
+            fv3_debug_log("syncContainerOrder: label read unavailable or incomplete, aborting before write");
+            return;
+        }
+        foreach ($rawCts as $rc) {
+            $rcName = is_array($rc) ? ltrim($rc['Names'][0] ?? '', '/') : '';
+            if ($rcName === '') {
+                fv3_debug_log("syncContainerOrder: unnamed container in label read, aborting before write");
+                return;
             }
+            $rcLabel = $rc['Labels']['folder.view3'] ?? '';
+            if (is_string($rcLabel) && $rcLabel !== '') { $ctLabels[$rcName] = $rcLabel; }
         }
         $folderNameSet = [];
         foreach ($folders as $folder) {
@@ -343,9 +352,10 @@
         }
         foreach ($folders as $folderId => $folder) {
             $members = $folder['containers'] ?? [];
-            // trim(), not empty(): empty("0") is true in PHP, so a regex of "0" was silently
-            // dropped here while docker.js applied it — autostart then disagreed with the screen.
-            if (isset($folder['regex']) && trim($folder['regex']) !== '') {
+            // is_string + trim, not empty(): empty("0") is true in PHP, so a regex of "0" was
+            // silently dropped while docker.js applied it. The type check mirrors docker.js and
+            // keeps a non-string regex from fataling trim() (TypeError on PHP 8).
+            if (is_string($folder['regex'] ?? null) && trim($folder['regex']) !== '') {
                 $regex = '/' . str_replace('/', '\/', $folder['regex']) . '/';
                 foreach ($allContainerNames as $name) {
                     if (@preg_match($regex, $name) && !in_array($name, $members) && !in_array($name, $explicitAssigned)) {
