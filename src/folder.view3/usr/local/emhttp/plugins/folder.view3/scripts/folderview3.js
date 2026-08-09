@@ -155,7 +155,9 @@ const fv3CountFolderExport = (parsed) => {
 };
 
 const fv3ImportFolderMap = async (content, type) => {
-    if (content.name) {
+    // Structural test, not `content.name` — an empty name is legal and would otherwise route a
+    // single folder down the map path, writing its own keys (name, icon, settings…) as folder ids.
+    if (fv3IsFolderShaped(content)) {
         await $.post('/plugins/folder.view3/server/create.php', { type: type, content: JSON.stringify(content) });
     } else {
         for (const [id, folder] of Object.entries(content)) {
