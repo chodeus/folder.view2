@@ -314,22 +314,48 @@
             return;
         }
 
+        // `folder.view3: <name>` label claims, keyed by container name. getDockerContainers()
+        // carries no Labels, so read them from the same raw endpoint readInfo() uses.
+        $ctLabels = [];
+        $rawCts = $dockerClient->getDockerJSON("/containers/json?all=1");
+        if (is_array($rawCts)) {
+            foreach ($rawCts as $rc) {
+                $rcName = ltrim($rc['Names'][0] ?? '', '/');
+                $rcLabel = $rc['Labels']['folder.view3'] ?? '';
+                if ($rcName !== '' && $rcLabel !== '') { $ctLabels[$rcName] = $rcLabel; }
+            }
+        }
+        $folderNameSet = [];
+        foreach ($folders as $folder) {
+            if (isset($folder['name'])) { $folderNameSet[$folder['name']] = true; }
+        }
+
         $folderContainers = [];
         $folderNames = [];
         $assignedContainers = [];
-        // Explicit members of any folder beat regex matches elsewhere (issue #46)
+        // Explicit members and label claims of any folder beat regex matches elsewhere (issue #46)
         $explicitAssigned = [];
         foreach ($folders as $folder) {
             $explicitAssigned = array_merge($explicitAssigned, $folder['containers'] ?? []);
         }
+        foreach ($ctLabels as $ctName => $ctLabel) {
+            if (isset($folderNameSet[$ctLabel])) { $explicitAssigned[] = $ctName; }
+        }
         foreach ($folders as $folderId => $folder) {
             $members = $folder['containers'] ?? [];
-            if (!empty($folder['regex'])) {
+            // trim(), not empty(): empty("0") is true in PHP, so a regex of "0" was silently
+            // dropped here while docker.js applied it — autostart then disagreed with the screen.
+            if (isset($folder['regex']) && trim($folder['regex']) !== '') {
                 $regex = '/' . str_replace('/', '\/', $folder['regex']) . '/';
                 foreach ($allContainerNames as $name) {
                     if (@preg_match($regex, $name) && !in_array($name, $members) && !in_array($name, $explicitAssigned)) {
                         $members[] = $name;
                     }
+                }
+            }
+            foreach ($ctLabels as $ctName => $ctLabel) {
+                if ($ctLabel === ($folder['name'] ?? null) && !in_array($ctName, $members)) {
+                    $members[] = $ctName;
                 }
             }
             $members = array_values(array_filter($members, function($m) use ($allContainerNames, $assignedContainers) {
