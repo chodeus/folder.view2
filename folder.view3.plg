@@ -6,14 +6,20 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
-<!ENTITY version "2026.08.01">
-<!ENTITY md5 "b984d1f45aea365757426c1f177788f4">
+<!ENTITY version "2026.08.14">
+<!ENTITY md5 "26c6168e9da970e2a92d5ef69fc85d39">
+<!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/197223-plugin-folderview3/" min="7.0.0">
     <CHANGES>
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
+
+###2026.08.14
+- Uninstalling now removes the plugin cleanly after previous version improvements
+- Import Everything now accepts a folder.view2 backup file instead of rejecting it as invalid
+- Container autostart order fixes
 
 ###2026.08.01
 - Full integration of a custom container autostart order. Defined in Plugin settings, now giving the option to override folder position order on the Docker page
@@ -639,13 +645,13 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
 
     <FILE Run="/bin/bash">
         <INLINE>
-            rm -f $(ls /boot/config/plugins/&name;/&name;*.txz 2>/dev/null | grep -v '&version;-x86_64-1')
+            rm -f $(ls /boot/config/plugins/&name;/&name;*.txz 2>/dev/null | grep -v '&pkgname;')
         </INLINE>
     </FILE>
 
     <!-- New source file -->
-    <FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
-        <URL>https://raw.githubusercontent.com/&github;/main/archive/&name;-&version;-x86_64-1.txz</URL>
+    <FILE Name="/boot/config/plugins/&name;/&pkgname;.txz" Run="upgradepkg --install-new --reinstall">
+        <URL>https://raw.githubusercontent.com/&github;/main/archive/&pkgname;.txz</URL>
         <MD5>&md5;</MD5>
     </FILE>
 
@@ -654,7 +660,7 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
         <INLINE>
             for p in /var/log/packages/&name;-*; do
                 [ -e "$p" ] || continue
-                case "$(basename "$p")" in *&version;-x86_64-1) continue;; esac
+                case "$(basename "$p")" in &pkgname;) continue;; esac
                 rm -f "$p"
             done
             mkdir -p /boot/config/plugins/&name;/styles
@@ -705,7 +711,12 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
     <!-- Remove the plugin -->
     <FILE Run="/bin/bash" Method="remove">
         <INLINE>
-            removepkg &name;-&version;
+            # Match the installed DB entry by glob — the package name carries an
+            # -x86_64-1 suffix, and it may not be the version this .plg is at.
+            for p in /var/log/packages/&name;-*; do
+                [ -e "$p" ] || continue
+                removepkg "$(basename "$p")"
+            done
             rm -rf &plugdir;
             rm -rf /boot/config/plugins/&name;
         </INLINE>

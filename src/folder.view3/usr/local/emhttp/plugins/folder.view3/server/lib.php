@@ -314,22 +314,58 @@
             return;
         }
 
+        // `folder.view3: <name>` label claims, keyed by container name. getDockerContainers()
+        // carries no Labels, so read them from the same raw endpoint readInfo() uses.
+        $ctLabels = [];
+        $rawCts = $dockerClient->getDockerJSON("/containers/json?all=1");
+        // Fail closed. A failed or partial read yields no label claims, and the order below would
+        // then write label-assigned containers back out as unassigned — the same hazard $ctListComplete
+        // guards against above, so abort rather than fall through to the permissive path.
+        if (!is_array($rawCts) || count($rawCts) < count($allContainerNames)) {
+            fv3_debug_log("syncContainerOrder: label read unavailable or incomplete, aborting before write");
+            return;
+        }
+        foreach ($rawCts as $rc) {
+            $rcName = is_array($rc) ? ltrim($rc['Names'][0] ?? '', '/') : '';
+            if ($rcName === '') {
+                fv3_debug_log("syncContainerOrder: unnamed container in label read, aborting before write");
+                return;
+            }
+            $rcLabel = $rc['Labels']['folder.view3'] ?? '';
+            if (is_string($rcLabel) && $rcLabel !== '') { $ctLabels[$rcName] = $rcLabel; }
+        }
+        $folderNameSet = [];
+        foreach ($folders as $folder) {
+            if (isset($folder['name'])) { $folderNameSet[$folder['name']] = true; }
+        }
+
         $folderContainers = [];
         $folderNames = [];
         $assignedContainers = [];
-        // Explicit members of any folder beat regex matches elsewhere (issue #46)
+        // Explicit members and label claims of any folder beat regex matches elsewhere (issue #46)
         $explicitAssigned = [];
         foreach ($folders as $folder) {
             $explicitAssigned = array_merge($explicitAssigned, $folder['containers'] ?? []);
         }
+        foreach ($ctLabels as $ctName => $ctLabel) {
+            if (isset($folderNameSet[$ctLabel])) { $explicitAssigned[] = $ctName; }
+        }
         foreach ($folders as $folderId => $folder) {
             $members = $folder['containers'] ?? [];
-            if (!empty($folder['regex'])) {
+            // is_string + trim, not empty(): empty("0") is true in PHP, so a regex of "0" was
+            // silently dropped while docker.js applied it. The type check mirrors docker.js and
+            // keeps a non-string regex from fataling trim() (TypeError on PHP 8).
+            if (is_string($folder['regex'] ?? null) && trim($folder['regex']) !== '') {
                 $regex = '/' . str_replace('/', '\/', $folder['regex']) . '/';
                 foreach ($allContainerNames as $name) {
                     if (@preg_match($regex, $name) && !in_array($name, $members) && !in_array($name, $explicitAssigned)) {
                         $members[] = $name;
                     }
+                }
+            }
+            foreach ($ctLabels as $ctName => $ctLabel) {
+                if ($ctLabel === ($folder['name'] ?? null) && !in_array($ctName, $members)) {
+                    $members[] = $ctName;
                 }
             }
             $members = array_values(array_filter($members, function($m) use ($allContainerNames, $assignedContainers) {
