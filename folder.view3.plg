@@ -15,6 +15,11 @@
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
 
+###2026.08.14.1
+- Fixed: uninstalling left the plugin's package entry behind, so the next install skipped the files and left the plugin broken — installing this version repairs it
+- Fixed: Import Everything now accepts a folder.view2 backup file instead of rejecting it as invalid (#53)
+- Fixed: the container autostart order now uses the same folder membership the Docker page renders, including containers assigned by docker label (#54)
+
 ###2026.08.01.7
 - Fixed: organizer folder-registry cleanup and writes are skipped whenever the registry can't be read
 
@@ -715,7 +720,7 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
     </FILE>
 
     <!-- New source file -->
-    <FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
+    <FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new --reinstall">
         <URL>https://raw.githubusercontent.com/&github;/beta/archive/&name;-&version;-x86_64-1.txz</URL>
         <MD5>&md5;</MD5>
     </FILE>
@@ -776,7 +781,12 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
     <!-- Remove the plugin -->
     <FILE Run="/bin/bash" Method="remove">
         <INLINE>
-            removepkg &name;-&version;
+            # Match the installed DB entry by glob — the package name carries an
+            # -x86_64-1 suffix, and it may not be the version this .plg is at.
+            for p in /var/log/packages/&name;-*; do
+                [ -e "$p" ] || continue
+                removepkg "$(basename "$p")"
+            done
             rm -rf &plugdir;
             rm -rf /boot/config/plugins/&name;
         </INLINE>
