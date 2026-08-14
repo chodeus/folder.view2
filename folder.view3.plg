@@ -5,7 +5,7 @@
 <!ENTITY github "&author;/&name;">
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
 <!ENTITY version "2026.08.14">
 <!ENTITY md5 "26c6168e9da970e2a92d5ef69fc85d39">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
@@ -651,7 +651,7 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
 
     <!-- New source file -->
     <FILE Name="/boot/config/plugins/&name;/&pkgname;.txz" Run="upgradepkg --install-new --reinstall">
-        <URL>https://raw.githubusercontent.com/&github;/main/archive/&pkgname;.txz</URL>
+        <URL>https://raw.githubusercontent.com/&github;/beta/archive/&pkgname;.txz</URL>
         <MD5>&md5;</MD5>
     </FILE>
 
