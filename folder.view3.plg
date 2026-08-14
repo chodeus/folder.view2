@@ -8,6 +8,7 @@
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
 <!ENTITY version "2026.08.14.1">
 <!ENTITY md5 "9991df12f2edcdaac83807bf9487204f">
+<!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="folder-open-o" support="https://forums.unraid.net/topic/197223-plugin-folderview3/" min="7.0.0">
@@ -715,13 +716,13 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
 
     <FILE Run="/bin/bash">
         <INLINE>
-            rm -f $(ls /boot/config/plugins/&name;/&name;*.txz 2>/dev/null | grep -v '&version;-x86_64-1')
+            rm -f $(ls /boot/config/plugins/&name;/&name;*.txz 2>/dev/null | grep -v '&pkgname;')
         </INLINE>
     </FILE>
 
     <!-- New source file -->
-    <FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new --reinstall">
-        <URL>https://raw.githubusercontent.com/&github;/beta/archive/&name;-&version;-x86_64-1.txz</URL>
+    <FILE Name="/boot/config/plugins/&name;/&pkgname;.txz" Run="upgradepkg --install-new --reinstall">
+        <URL>https://raw.githubusercontent.com/&github;/beta/archive/&pkgname;.txz</URL>
         <MD5>&md5;</MD5>
     </FILE>
 
@@ -730,7 +731,7 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
         <INLINE>
             for p in /var/log/packages/&name;-*; do
                 [ -e "$p" ] || continue
-                case "$(basename "$p")" in *&version;-x86_64-1) continue;; esac
+                case "$(basename "$p")" in &pkgname;) continue;; esac
                 rm -f "$p"
             done
             mkdir -p /boot/config/plugins/&name;/styles
