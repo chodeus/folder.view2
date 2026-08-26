@@ -1373,7 +1373,8 @@ $.ajaxPrefilter((options, originalOptions, jqXHR) => {
         fv3Debug('ajaxPrefilter', 'modified data', options.data);
         // Snapshot the interleaved order into FV3's own config so a reinstall can
         // restore folder positions after the uninstall prefs cleanup (server-side heal)
-        $.post('/plugins/folder.view3/server/update_order.php', {type: 'docker', names: data.get('names'), csrf_token: typeof csrf_token !== 'undefined' ? csrf_token : ''});
+        // csrf_token is auto-attached by webGui's global ajaxPrefilter (HeadInlineJS.php)
+        $.post('/plugins/folder.view3/server/update_order.php', {type: 'docker', names: data.get('names')});
     }
 });
 

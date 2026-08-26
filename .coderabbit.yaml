@@ -95,10 +95,15 @@ reviews:
         parent; a handler attached once to a node that later gets replaced is
         the bug.
 
-        CSRF: every state-changing request (POST/PUT/DELETE via fetch/$.ajax)
-        must carry the CSRF token (csrf_token field / X-Csrf-Token header). A
-        new mutating call that omits it will be rejected by Unraid's
-        local_prepend.php — flag it.
+        CSRF: Unraid's webGui auto-attaches csrf_token to every same-origin
+        jQuery POST (global ajaxPrefilter in HeadInlineJS.php; upstream
+        guidance: "the webGUI will add it to POST methods automatically"), so
+        a bare same-origin $.post/$.ajax POST is correct — do NOT flag it.
+        Only requests the injector can't reach need the token explicitly
+        (csrf_token field or X-Csrf-Token header, guarded with
+        typeof csrf_token !== 'undefined'): fetch/XMLHttpRequest, and any
+        non-POST or cross-origin mutating call. Flag a mutating fetch/XHR
+        without it.
 
         EVENT BUS FROZEN: the customEvents / event-bus contract is FROZEN. Do
         not rename, repurpose, or remove existing custom events — extensions
