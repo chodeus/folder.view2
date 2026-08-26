@@ -719,6 +719,16 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
             done
             rm -rf &plugdir;
             rm -rf /boot/config/plugins/&name;
+            # Folder rows persist phantom 'folder-ID' entries into the stock
+            # sort prefs via UserPrefs.php — strip them and renumber on the way out.
+            for f in /boot/config/plugins/dockerMan/userprefs.cfg /boot/config/plugins/dynamix.vm.manager/userprefs.cfg; do
+                [ -f "$f" ] || continue
+                if awk -F'"' 'BEGIN{n=0} $0 ~ /^[0-9]+="/ { v=$2; if (v ~ /^folder-[A-Za-z0-9]+$/) if (length(v) >= 20) next; print n"=\""v"\""; n++; next } { print }' "$f" > "$f.fv3clean"; then
+                    mv "$f.fv3clean" "$f"
+                else
+                    rm -f "$f.fv3clean"
+                fi
+            done
         </INLINE>
     </FILE>
 
