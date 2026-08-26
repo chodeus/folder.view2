@@ -185,17 +185,26 @@
         return "$configDir/order-$type.json";
     }
 
-    function saveOrderSnapshot(string $type, array $entries): bool {
+    // Returns the cleaned list, or null when any non-empty entry breaks the snapshot
+    // rules. Empty entries are delimiter artifacts (every stock names string ends ';')
+    // and are dropped, not treated as invalid. The rules exist because a violating
+    // entry could corrupt an ini line when healed back into userprefs.cfg.
+    function fv3_sanitize_order_entries(array $entries): ?array {
         $clean = [];
         foreach ($entries as $e) {
-            if (!is_string($e)) continue;
+            if (!is_string($e)) return null;
             $e = trim($e);
-            // Skip anything that could corrupt an ini line when healed back into userprefs.cfg
-            if ($e === '' || strlen($e) > 256 || strpos($e, '"') !== false || preg_match('/[\x00-\x1f\x7f]/', $e)) continue;
+            if ($e === '') continue;
+            if (strlen($e) > 256 || strpos($e, '"') !== false || preg_match('/[\x00-\x1f\x7f]/', $e)) return null;
             $clean[] = $e;
-            if (count($clean) >= 4096) break;
         }
-        if (empty($clean)) return false;
+        if (count($clean) > 4096) return null;
+        return $clean;
+    }
+
+    function saveOrderSnapshot(string $type, array $entries): bool {
+        $clean = fv3_sanitize_order_entries($entries);
+        if ($clean === null || empty($clean)) return false;
         return fv3_atomic_write(fv3_order_snapshot_file($type), json_encode(['fv3_order_version' => 1, 'entries' => $clean], JSON_PRETTY_PRINT));
     }
 

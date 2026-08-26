@@ -9,5 +9,11 @@
         echo json_encode(['error' => 'invalid names']);
         exit;
     }
-    echo json_encode(['success' => saveOrderSnapshot($type, explode(';', $names))]);
+    $entries = fv3_sanitize_order_entries(explode(';', $names));
+    if ($entries === null || empty($entries)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'invalid names']);
+        exit;
+    }
+    echo json_encode(['success' => saveOrderSnapshot($type, $entries)]);
 ?>
