@@ -6,8 +6,8 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.08.14">
-<!ENTITY md5 "26c6168e9da970e2a92d5ef69fc85d39">
+<!ENTITY version "2026.08.27.1">
+<!ENTITY md5 "f1f06c4fd82cf44d78bcb02e47f243c2">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
@@ -16,7 +16,7 @@
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
 
-###2026.08.26.1
+###2026.08.27.1
 - Uninstalling now also removes the plugin's leftover entries from the Docker/VM sort-order preferences, including entries left behind by folder.view and folder.view2
 
 ###2026.08.14
