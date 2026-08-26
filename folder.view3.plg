@@ -725,7 +725,7 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
                 [ -f "$f" ] || continue
                 # RT (gawk, guaranteed on Unraid) keeps each line terminator as-is,
                 # incl. a missing final newline.
-                if awk -F'"' 'BEGIN{n=0} $0 ~ /^[0-9]+="[^"]*"$/ { v=$2; if (v ~ /^folder-[A-Za-z0-9]+$/) if (length(v) >= 20) if (v ~ /[A-Z]/) if (v ~ /[a-z]/) next; printf "%d=\"%s\"%s", n, v, RT; n++; next } { printf "%s%s", $0, RT }' "$f" > "$f.fv3clean"; then
+                if awk -F'"' 'BEGIN{RS="\r\n|\n|\r"; n=0} $0 ~ /^[0-9]+="[^"]*"$/ { v=$2; if (v ~ /^folder-[A-Za-z0-9]+$/) if (length(v) >= 20) if (v ~ /[A-Z]/) if (v ~ /[a-z]/) next; printf "%d=\"%s\"%s", n, v, RT; n++; next } { printf "%s%s", $0, RT }' "$f" > "$f.fv3clean"; then
                     mv "$f.fv3clean" "$f"
                 else
                     rm -f "$f.fv3clean"
