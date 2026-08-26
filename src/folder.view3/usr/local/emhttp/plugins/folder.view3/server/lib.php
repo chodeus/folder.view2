@@ -173,8 +173,78 @@
         elseif($type == 'vm') { $prefsFilePath = "$userPrefsDir/dynamix.vm.manager/userprefs.cfg"; }
         else { return '[]'; }
         if(!file_exists($prefsFilePath)) { return '[]'; }
+        fv3_heal_user_prefs($type, $prefsFilePath);
         $parsedIni = @parse_ini_file($prefsFilePath);
         return json_encode(array_values($parsedIni ?: []));
+    }
+
+    function fv3_order_snapshot_file(string $type): string {
+        global $configDir;
+        return "$configDir/order-$type.json";
+    }
+
+    function saveOrderSnapshot(string $type, array $entries): bool {
+        $clean = [];
+        foreach ($entries as $e) {
+            if (!is_string($e)) continue;
+            $e = trim($e);
+            // Skip anything that could corrupt an ini line when healed back into userprefs.cfg
+            if ($e === '' || strlen($e) > 256 || strpos($e, '"') !== false || preg_match('/[\x00-\x1f\x7f]/', $e)) continue;
+            $clean[] = $e;
+            if (count($clean) >= 4096) break;
+        }
+        if (empty($clean)) return false;
+        return fv3_atomic_write(fv3_order_snapshot_file($type), json_encode(['fv3_order_version' => 1, 'entries' => $clean], JSON_PRETTY_PRINT));
+    }
+
+    // Re-insert folder rows into the stock sort prefs from FV3's own order snapshot.
+    // Fires only in the post-reinstall state: prefs has entries but positions no live
+    // folder, and a snapshot mentions live folders. Insert-only — existing prefs
+    // entries are never reordered or removed, so container order is preserved.
+    function fv3_heal_user_prefs(string $type, string $prefsFilePath): void {
+        global $configDir;
+        $parsed = @parse_ini_file($prefsFilePath);
+        if (!is_array($parsed) || empty($parsed)) return;
+        uksort($parsed, function($a, $b) { return (int)$a <=> (int)$b; });
+        $current = array_values($parsed);
+
+        $config = fv3_read_json("$configDir/$type.json");
+        if (empty($config)) return;
+        foreach ($current as $v) { if (isset($config[$v])) return; }
+
+        $snap = fv3_read_json(fv3_order_snapshot_file($type));
+        $saved = $snap['entries'] ?? null;
+        if (!is_array($saved)) return;
+
+        $currentSet = array_flip($current);
+        // Each live folder id maps to the first later snapshot entry still present in prefs (null = append)
+        $insertBefore = [];
+        $pending = [];
+        foreach ($saved as $entry) {
+            if (!is_string($entry)) continue;
+            if (isset($config[$entry])) { $pending[] = $entry; continue; }
+            if (isset($currentSet[$entry])) {
+                foreach ($pending as $fid) { $insertBefore[$fid] = $entry; }
+                $pending = [];
+            }
+        }
+        foreach ($pending as $fid) { $insertBefore[$fid] = null; }
+        if (empty($insertBefore)) return;
+
+        $out = [];
+        foreach ($current as $name) {
+            foreach ($insertBefore as $fid => $succ) {
+                if ($succ === $name) { $out[] = $fid; unset($insertBefore[$fid]); }
+            }
+            $out[] = $name;
+        }
+        foreach (array_keys($insertBefore) as $fid) { $out[] = $fid; }
+
+        $lines = [];
+        foreach (array_values($out) as $i => $name) { $lines[] = $i . '="' . $name . '"'; }
+        if (fv3_atomic_write($prefsFilePath, implode("\n", $lines) . "\n")) {
+            fv3_debug_log("fv3_heal_user_prefs($type): re-inserted " . (count($out) - count($current)) . " folder position(s)");
+        }
     }
 
     function fv3_autostart_file(): string {
@@ -942,6 +1012,8 @@
             'settings' => fv3_read_json("$configDir/settings.json"),
             'autostart' => fv3_read_json("$configDir/autostart.json"),
             'css_config' => fv3_read_json("$configDir/css-config.json"),
+            'order_docker' => fv3_read_json("$configDir/order-docker.json"),
+            'order_vm' => fv3_read_json("$configDir/order-vm.json"),
             'custom_styles' => []
         ];
         $stylesDir = "$configDir/styles";
@@ -976,9 +1048,16 @@
         if (!$bundle || !isset($bundle['fv3_export_version'])) return ['error' => 'Invalid FV3 export file'];
         $restored = [];
         if (!is_dir($configDir)) @mkdir($configDir, 0770, true);
-        foreach (['docker', 'vm', 'settings', 'autostart', 'css_config'] as $key) {
+        foreach (['docker', 'vm', 'settings', 'autostart', 'css_config', 'order_docker', 'order_vm'] as $key) {
             if (!isset($bundle[$key]) || !is_array($bundle[$key])) continue;
             $data = $bundle[$key];
+            // Order snapshots go through saveOrderSnapshot so imported entries get the same sanitization as live saves
+            if ($key === 'order_docker' || $key === 'order_vm') {
+                $t = $key === 'order_docker' ? 'docker' : 'vm';
+                $entries = (isset($data['entries']) && is_array($data['entries'])) ? $data['entries'] : [];
+                if (!empty($entries) && saveOrderSnapshot($t, $entries)) { $restored[] = "order-$t.json"; }
+                continue;
+            }
             // Folder maps are id => folder — allowlist the id keys (same charset as update.php) so a crafted
             // backup can't plant a folder id that breaks out of the class/onclick attributes at render (XSS).
             if ($key === 'docker' || $key === 'vm') {
