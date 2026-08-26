@@ -46,8 +46,10 @@
         @file_put_contents($fv3_debug_log_file, "--- FolderView3 lib.php readInfo Start ---\n");
     }
 
-    function fv3_validate_type(string $type): string {
-        if (!in_array($type, ['docker', 'vm'], true)) {
+    function fv3_validate_type($type): string {
+        // Untyped on purpose: a crafted type[]=x request reaches every endpoint as an
+        // array, and a string-typed parameter would fatal (TypeError) instead of 400ing.
+        if (!is_string($type) || !in_array($type, ['docker', 'vm'], true)) {
             http_response_code(400);
             exit;
         }
