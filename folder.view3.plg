@@ -16,6 +16,9 @@
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
 
+###2026.08.26.1
+- Uninstalling now also removes the plugin's leftover entries from the Docker/VM sort-order preferences, including entries left behind by folder.view and folder.view2
+
 ###2026.08.14
 - Uninstalling now removes the plugin cleanly after previous version improvements
 - Import Everything now accepts a folder.view2 backup file instead of rejecting it as invalid
