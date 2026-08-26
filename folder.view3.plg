@@ -16,6 +16,9 @@
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
 
+###2026.08.26.1
+- Uninstalling now also removes the plugin's leftover entries from the Docker/VM sort-order preferences, including entries left behind by folder.view and folder.view2
+
 ###2026.08.14
 - Uninstalling now removes the plugin cleanly after previous version improvements
 - Import Everything now accepts a folder.view2 backup file instead of rejecting it as invalid
@@ -719,6 +722,18 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
             done
             rm -rf &plugdir;
             rm -rf /boot/config/plugins/&name;
+            # Folder rows persist phantom 'folder-ID' entries into the stock
+            # sort prefs via UserPrefs.php — strip them and renumber on the way out.
+            for f in /boot/config/plugins/dockerMan/userprefs.cfg /boot/config/plugins/dynamix.vm.manager/userprefs.cfg; do
+                [ -f "$f" ] || continue
+                # RT (gawk, guaranteed on Unraid) keeps each line terminator as-is,
+                # incl. a missing final newline.
+                if awk -F'"' 'BEGIN{RS="\r\n|\n|\r"; n=0} $0 ~ /^[0-9]+="[^"]*"$/ { v=$2; if (v ~ /^folder-[A-Za-z0-9]+$/) if (length(v) >= 20) if (v ~ /[A-Z]/) if (v ~ /[a-z]/) next; printf "%d=\"%s\"%s", n, v, RT; n++; next } { printf "%s%s", $0, RT }' "$f" > "$f.fv3clean"; then
+                    mv "$f.fv3clean" "$f"
+                else
+                    rm -f "$f.fv3clean"
+                fi
+            done
         </INLINE>
     </FILE>
 
