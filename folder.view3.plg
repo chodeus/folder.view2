@@ -723,7 +723,9 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
             # sort prefs via UserPrefs.php — strip them and renumber on the way out.
             for f in /boot/config/plugins/dockerMan/userprefs.cfg /boot/config/plugins/dynamix.vm.manager/userprefs.cfg; do
                 [ -f "$f" ] || continue
-                if awk -F'"' 'BEGIN{n=0} $0 ~ /^[0-9]+="[^"]*"$/ { v=$2; if (v ~ /^folder-[A-Za-z0-9]+$/) if (length(v) >= 20) if (v ~ /[A-Z]/) if (v ~ /[a-z]/) next; print n"=\""v"\""; n++; next } { print }' "$f" > "$f.fv3clean"; then
+                # RT (gawk, guaranteed on Unraid) keeps each line terminator as-is,
+                # incl. a missing final newline.
+                if awk -F'"' 'BEGIN{n=0} $0 ~ /^[0-9]+="[^"]*"$/ { v=$2; if (v ~ /^folder-[A-Za-z0-9]+$/) if (length(v) >= 20) if (v ~ /[A-Z]/) if (v ~ /[a-z]/) next; printf "%d=\"%s\"%s", n, v, RT; n++; next } { printf "%s%s", $0, RT }' "$f" > "$f.fv3clean"; then
                     mv "$f.fv3clean" "$f"
                 else
                     rm -f "$f.fv3clean"
