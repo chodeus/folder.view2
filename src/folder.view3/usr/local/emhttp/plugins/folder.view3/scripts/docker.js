@@ -1355,12 +1355,15 @@ const createFolderBtn = () => fv3CreateFolderBtn('docker', '/Docker/Folder');
 
 // Intercept Unraid's UserPrefs request to rewrite folder/order numbers — required for autostart and draw order.
 let fv3OrderSnapshotChain = Promise.resolve();
+let fv3OrderSnapshotGen = 0;
 $.ajaxPrefilter((options, originalOptions, jqXHR) => {
     if (options.url === "/plugins/dynamix.docker.manager/include/UserPrefs.php") {
         fv3Debug('ajaxPrefilter', 'UserPrefs intercepted', {...options});
         const data = new URLSearchParams(options.data);
         if (!data.has('names')) {
-            // Reset Order POST has only {reset:true} — nothing to renumber, let it through.
+            // Reset Order POST has only {reset:true} — nothing to renumber, let it through,
+            // and invalidate queued snapshot posts so a stale pre-reset order can't be saved.
+            fv3OrderSnapshotGen++;
             fv3Debug('ajaxPrefilter', 'no names param, passing through');
             return;
         }
@@ -1377,8 +1380,11 @@ $.ajaxPrefilter((options, originalOptions, jqXHR) => {
         // csrf_token is auto-attached by webGui's global ajaxPrefilter (HeadInlineJS.php).
         // Chained so a delayed earlier snapshot can't land after (and overwrite) a newer one.
         const fv3SnapshotNames = data.get('names');
+        const fv3SnapshotGen = fv3OrderSnapshotGen;
         fv3OrderSnapshotChain = fv3OrderSnapshotChain.then(() =>
-            $.post('/plugins/folder.view3/server/update_order.php', {type: 'docker', names: fv3SnapshotNames})
+            fv3SnapshotGen === fv3OrderSnapshotGen
+                ? $.post('/plugins/folder.view3/server/update_order.php', {type: 'docker', names: fv3SnapshotNames})
+                : undefined
         ).catch(() => {});
     }
 });

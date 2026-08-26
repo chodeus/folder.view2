@@ -209,9 +209,10 @@
     }
 
     // Re-insert folder rows into the stock sort prefs from FV3's own order snapshot.
-    // Fires only in the post-reinstall state: prefs has entries but positions no live
-    // folder, and a snapshot mentions live folders. Insert-only — existing prefs
-    // entries are never reordered or removed, so container order is preserved.
+    // Fires when prefs has entries but at least one live folder is unpositioned —
+    // the post-reinstall state, or a folder whose entry went missing. Insert-only —
+    // existing prefs entries are never reordered or removed, so container order is
+    // preserved, and already-positioned folders are kept in place and used as anchors.
     function fv3_heal_user_prefs(string $type, string $prefsFilePath): void {
         global $configDir;
         $parsed = @parse_ini_file($prefsFilePath);
@@ -221,19 +222,19 @@
 
         $config = fv3_read_json("$configDir/$type.json");
         if (empty($config)) return;
-        foreach ($current as $v) { if (isset($config[$v])) return; }
+        if (empty(array_diff(array_keys($config), $current))) return;
 
         $snap = fv3_read_json(fv3_order_snapshot_file($type));
         $saved = $snap['entries'] ?? null;
         if (!is_array($saved)) return;
 
         $currentSet = array_flip($current);
-        // Each live folder id maps to the first later snapshot entry still present in prefs (null = append)
+        // Each unpositioned live folder id maps to the first later snapshot entry still present in prefs (null = append)
         $insertBefore = [];
         $pending = [];
         foreach ($saved as $entry) {
             if (!is_string($entry)) continue;
-            if (isset($config[$entry])) { $pending[] = $entry; continue; }
+            if (isset($config[$entry]) && !isset($currentSet[$entry])) { $pending[] = $entry; continue; }
             if (isset($currentSet[$entry])) {
                 foreach ($pending as $fid) { $insertBefore[$fid] = $entry; }
                 $pending = [];
