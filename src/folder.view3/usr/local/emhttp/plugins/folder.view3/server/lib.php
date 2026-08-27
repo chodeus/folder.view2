@@ -216,18 +216,25 @@
     // absent file -> [] (present-empty: source authoritatively has no snapshot, import
     // clears the destination); unreadable/malformed -> null (omit the bundle key, import
     // leaves the destination untouched); valid -> the wrapped snapshot.
+    // A snapshot wrapper saveOrderSnapshot could actually have written: version 1 and a
+    // non-empty entries list that passes sanitization unchanged. Returns the entries or
+    // null. Shared by export (file contents) and import (bundle contents) so both sides
+    // apply identical validation — anything else is corrupt/tampered and must be ignored,
+    // never treated as empty (that would clear a valid destination snapshot on import).
+    function fv3_validate_order_snapshot(array $data): ?array {
+        if (($data['fv3_order_version'] ?? null) !== 1
+            || !isset($data['entries']) || !is_array($data['entries'])) return null;
+        $clean = fv3_sanitize_order_entries($data['entries']);
+        if ($clean === null || empty($clean) || $clean !== array_values($data['entries'])) return null;
+        return $clean;
+    }
+
     function fv3_export_order_snapshot(string $type): ?array {
         $path = fv3_order_snapshot_file($type);
         if (!file_exists($path)) return [];
         $raw = @file_get_contents($path);
         $data = ($raw !== false) ? json_decode($raw, true) : null;
-        if (!is_array($data) || ($data['fv3_order_version'] ?? null) !== 1
-            || !isset($data['entries']) || !is_array($data['entries'])) return null;
-        // saveOrderSnapshot never writes an empty or unsanitary list — anything that fails
-        // its own rules is not our file (corrupt/tampered), so omit it rather than export
-        // a present-empty key that would clear the destination snapshot on import.
-        $clean = fv3_sanitize_order_entries($data['entries']);
-        if ($clean === null || empty($clean) || $clean !== array_values($data['entries'])) return null;
+        if (!is_array($data) || fv3_validate_order_snapshot($data) === null) return null;
         return $data;
     }
 
@@ -1094,40 +1101,46 @@
         if (!$bundle || !isset($bundle['fv3_export_version'])) return ['error' => 'Invalid FV3 export file'];
         $restored = [];
         if (!is_dir($configDir)) @mkdir($configDir, 0770, true);
+        // Confinement gate for EVERY write below, not just the snapshot branch: refuse the
+        // whole import if the config dir path resolves through a symlink or doesn't exist.
+        if (realpath($configDir) !== $configDir) {
+            return ['error' => 'Plugin config directory failed its confinement check — import aborted'];
+        }
         foreach (['docker', 'vm', 'settings', 'autostart', 'css_config', 'order_docker', 'order_vm'] as $key) {
             if (!isset($bundle[$key]) || !is_array($bundle[$key])) continue;
             $data = $bundle[$key];
-            // Order snapshots go through saveOrderSnapshot so imported entries get the same sanitization as live saves
             if ($key === 'order_docker' || $key === 'order_vm') {
                 $t = $key === 'order_docker' ? 'docker' : 'vm';
-                // Re-confine before the deletes/writes below: refuse if the config dir
-                // path resolves through a symlink (realpath must equal the literal).
-                if (realpath($configDir) !== $configDir) { continue; }
                 $snapFile = fv3_order_snapshot_file($t);
-                $entries = (isset($data['entries']) && is_array($data['entries'])) ? $data['entries'] : [];
-                if (empty($entries)) {
-                    // The bundle explicitly carries no snapshot (source box never saved one) —
-                    // clear any pre-existing destination snapshot so it can't position the
-                    // freshly imported folders with unrelated order data. A bundle without
-                    // the key at all (pre-snapshot export) leaves the destination untouched.
+                if ($data === []) {
+                    // Exactly [] is how export represents "source has no snapshot" — clear any
+                    // pre-existing destination snapshot so it can't position the freshly
+                    // imported folders. A bundle without the key leaves the destination alone.
                     if (@unlink($snapFile)) { $restored[] = "order-$t.json (cleared)"; }
                     continue;
                 }
+                // Same validation as export: a malformed wrapper is corrupt/tampered input and
+                // must not fall through to the clear branch or to a destructive restore.
+                $entries = fv3_validate_order_snapshot($data);
+                if ($entries === null) { continue; }
                 if (saveOrderSnapshot($t, $entries)) {
                     $restored[] = "order-$t.json";
                 } else {
-                    // Failed restore: drop any stale destination snapshot rather than let
-                    // it position the imported folders with unrelated order data.
+                    // Validated entries can only fail on the atomic write itself; the source
+                    // provably had a different snapshot, so drop the stale destination copy
+                    // rather than let it position the imported folders (heal simply disables).
                     @unlink($snapFile);
                 }
                 continue;
             }
-            // Folder maps are id => folder — allowlist the id keys (same charset as update.php) so a crafted
-            // backup can't plant a folder id that breaks out of the class/onclick attributes at render (XSS).
+            // Folder maps are id => folder — allowlist the id keys so a crafted backup can't
+            // plant a folder id that breaks out of class/onclick attributes at render (XSS).
+            // Alphanumeric ONLY: every generator (folder.view/2/3) strips +/= and never emits
+            // them, and an id containing +/= would break jQuery selectors at render time.
             if ($key === 'docker' || $key === 'vm') {
                 $clean = [];
                 foreach ($data as $fid => $folder) {
-                    if (is_string($fid) && preg_match('#^[A-Za-z0-9+/=]+$#D', $fid) && is_array($folder)) {
+                    if (is_string($fid) && preg_match('#^[A-Za-z0-9]+$#D', $fid) && is_array($folder)) {
                         $clean[$fid] = $folder;
                     }
                 }
