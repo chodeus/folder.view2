@@ -1075,16 +1075,26 @@
             // Order snapshots go through saveOrderSnapshot so imported entries get the same sanitization as live saves
             if ($key === 'order_docker' || $key === 'order_vm') {
                 $t = $key === 'order_docker' ? 'docker' : 'vm';
+                // Re-confine before the deletes/writes below: refuse if the config dir
+                // path resolves through a symlink (realpath must equal the literal).
+                if (realpath($configDir) !== $configDir) { continue; }
+                $snapFile = fv3_order_snapshot_file($t);
                 $entries = (isset($data['entries']) && is_array($data['entries'])) ? $data['entries'] : [];
                 if (empty($entries)) {
                     // The bundle explicitly carries no snapshot (source box never saved one) —
                     // clear any pre-existing destination snapshot so it can't position the
                     // freshly imported folders with unrelated order data. A bundle without
                     // the key at all (pre-snapshot export) leaves the destination untouched.
-                    if (@unlink(fv3_order_snapshot_file($t))) { $restored[] = "order-$t.json (cleared)"; }
+                    if (@unlink($snapFile)) { $restored[] = "order-$t.json (cleared)"; }
                     continue;
                 }
-                if (saveOrderSnapshot($t, $entries)) { $restored[] = "order-$t.json"; }
+                if (saveOrderSnapshot($t, $entries)) {
+                    $restored[] = "order-$t.json";
+                } else {
+                    // Failed restore: drop any stale destination snapshot rather than let
+                    // it position the imported folders with unrelated order data.
+                    @unlink($snapFile);
+                }
                 continue;
             }
             // Folder maps are id => folder — allowlist the id keys (same charset as update.php) so a crafted
