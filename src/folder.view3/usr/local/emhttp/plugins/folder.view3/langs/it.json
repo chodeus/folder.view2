@@ -277,5 +277,6 @@
     "autostart-not-started": "Senza avvio automatico",
     "autostart-col-container": "Container",
     "autostart-col-folder": "Cartella",
-    "autostart-col-wait": "Attesa (s)"
+    "autostart-col-wait": "Attesa (s)",
+    "label-claim-tooltip": "Rivendicato da un'etichetta folder.view3 — un'assegnazione esplicita a una cartella ha la precedenza"
 }

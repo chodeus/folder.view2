@@ -32,6 +32,7 @@ let selectedRegex = [];
 let selected = [];
 let hiddenPreview = [];
 let labelFolderNames = new Set();
+let otherExplicitMembers = new Set();
 const type = new URLSearchParams(location.search).get('type');
 const folderId = new URLSearchParams(location.search).get('id');
 
@@ -70,6 +71,9 @@ $('div.canvas > form')[0].preview_vertical_bars_color.value = rgbToHex($('body')
     }
     let folders = fv3SafeParse(await $.get(`/plugins/folder.view3/server/read.php?type=${type}`).promise(), {});
     labelFolderNames = new Set(Object.values(folders).map(f => f.name));
+    // Other folders' explicit containers[] — their claims beat label/regex here (issue #55).
+    // Must be set before the edit-branch updateRegex() call below, which runs pre-prune.
+    otherExplicitMembers = new Set(Object.entries(folders).filter(([fid]) => fid !== folderId).flatMap(([, f]) => Array.isArray(f.containers) ? f.containers : []));
     let typeFilter;
     if (type === 'docker') {
         typeFilter = (e) => {
@@ -272,14 +276,15 @@ const updateIcon = (e) => {
 const updateRegex = (e) => {
     choose = choose.concat(selectedRegex);
     const fldName = $('[name="name"]')[0].value;
-    selectedRegex = choose.filter(el => el.Label === fldName);
-    choose = choose.filter(el => el.Label !== fldName);
+    // A label claim is void for containers explicitly assigned to another folder (issue #55)
+    selectedRegex = choose.filter(el => el.Label === fldName && !otherExplicitMembers.has(el.Name));
+    choose = choose.filter(el => el.Label !== fldName || otherExplicitMembers.has(el.Name));
     if (e.value) {
         try {
             const regex = new RegExp(e.value);
             for (let i = 0; i < choose.length; i++) {
-                // Containers label-claimed by another folder can't be regex-captured (matches render, issue #46)
-                if (regex.test(choose[i].Name) && !(choose[i].Label && labelFolderNames.has(choose[i].Label))) {
+                // Containers label-claimed or explicitly assigned elsewhere can't be regex-captured (matches render, issues #46/#55)
+                if (regex.test(choose[i].Name) && !(choose[i].Label && labelFolderNames.has(choose[i].Label)) && !otherExplicitMembers.has(choose[i].Name)) {
                     const tmpSel = choose.splice(i, 1)[0];
                     if(!selectedRegex.includes(tmpSel)) {
                         selectedRegex.push(tmpSel);
@@ -345,7 +350,9 @@ const updateList = () => {
     }
 
     for (const el of choose) {
-        table.append($(`<tr class="item" draggable="true"><td><span style="cursor: pointer;" onclick="setIconAsContainer(this)"><img src="${escapeHtml(el.Icon || '/plugins/dynamix.docker.manager/images/question.png')}" class="img" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';"></span>${escapeHtml(el.Name)}</td><td><input class="container-switch fv3-checkbox" type="checkbox" name="containers[]" value="${escapeHtml(el.Name)}"></td><td></td></tr>`));
+        // fa-tag marker: this container carries a live label claim (issue #55)
+        const labelClaim = el.Label && labelFolderNames.has(el.Label) ? `<span class="fv3-label-claim" title="${escapeHtml($.i18n('label-claim-tooltip'))}" data-i18n="[title]label-claim-tooltip"><i class="fa fa-tag" aria-hidden="true"></i> ${escapeHtml(el.Label)}</span>` : '';
+        table.append($(`<tr class="item" draggable="true"><td><span style="cursor: pointer;" onclick="setIconAsContainer(this)"><img src="${escapeHtml(el.Icon || '/plugins/dynamix.docker.manager/images/question.png')}" class="img" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';"></span>${escapeHtml(el.Name)}${labelClaim}</td><td><input class="container-switch fv3-checkbox" type="checkbox" name="containers[]" value="${escapeHtml(el.Name)}"></td><td></td></tr>`));
     }
 
     for (const el of selectedRegex) {

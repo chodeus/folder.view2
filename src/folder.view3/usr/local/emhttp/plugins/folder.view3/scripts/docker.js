@@ -29,12 +29,6 @@ const createFolders = async () => {
     fv3ResolveRenamedContainers(folders, containersInfo, 'docker');
     Object.values(folders).forEach(f => fv3ApplyDefaults(f));
 
-    // Explicit members + label claims of ANY folder beat regex matches elsewhere (issue #46)
-    const fv3FolderNames = new Set(Object.values(folders).map(f => f.name));
-    const fv3AssignedElsewhere = Object.values(folders).flatMap(f => Array.isArray(f.containers) ? f.containers : [])
-        .concat(Object.keys(containersInfo).filter(n => { const l = containersInfo[n]?.Labels?.['folder.view3']; return l && fv3FolderNames.has(l); }));
-    Object.values(folders).forEach(f => { f.fv3AssignedElsewhere = fv3AssignedElsewhere; });
-
     // No userprefs.cfg: synthesize alphabetical intermix of folder names + orphan containers.
     // Note: `unraidOrder` = read_order.php (raw prefs, has folder placeholders); `order` =
     // read_unraid_order.php (containers only, alphabetical when prefs absent).
@@ -115,6 +109,14 @@ const createFolders = async () => {
         order: order,
         containersInfo: containersInfo
     }}));
+
+    // Explicit members/label claims of ANY folder beat regex elsewhere (#46); explicit beats label (#55).
+    // Must stay AFTER the pre-folders-creation dispatch — extensions may edit memberships there.
+    const fv3FolderNames = new Set(Object.values(folders).map(f => f.name));
+    const fv3ExplicitMembers = Object.values(folders).flatMap(f => Array.isArray(f.containers) ? f.containers : []);
+    const fv3AssignedElsewhere = fv3ExplicitMembers
+        .concat(Object.keys(containersInfo).filter(n => { const l = containersInfo[n]?.Labels?.['folder.view3']; return l && fv3FolderNames.has(l); }));
+    Object.values(folders).forEach(f => { f.fv3AssignedElsewhere = fv3AssignedElsewhere; f.fv3ExplicitMembers = fv3ExplicitMembers; });
 
     fv3Debug('createFolders', 'Starting loop to draw folders in order.');
     for (let key = 0; key < order.length; key++) {
@@ -302,7 +304,8 @@ const createFolder = (folder, id, positionInMainOrder, liveOrderArray, container
         if (folder.regex) fv3Debug('createFolder', id, 'regex present but empty/invalid, skipping');
     }
 
-    const labelMatches = orderSnapshotAtFolderStart.filter(el => containersInfo[el]?.Labels?.['folder.view3'] === folder.name && !combinedContainers.includes(el));
+    // Skip containers explicitly assigned to any folder — explicit beats label (issue #55)
+    const labelMatches = orderSnapshotAtFolderStart.filter(el => containersInfo[el]?.Labels?.['folder.view3'] === folder.name && !combinedContainers.includes(el) && !(folder.fv3ExplicitMembers || []).includes(el));
     labelMatches.forEach(match => combinedContainers.push(match));
 
     fv3Debug('createFolder', id, 'label matches', labelMatches);
