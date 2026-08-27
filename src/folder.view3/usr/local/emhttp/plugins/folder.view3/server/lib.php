@@ -212,6 +212,19 @@
         return fv3_atomic_write(fv3_order_snapshot_file($type), json_encode(['fv3_order_version' => 1, 'entries' => $clean], JSON_PRETTY_PRINT));
     }
 
+    // Snapshot state for export, keeping the tri-state importAll() relies on:
+    // absent file -> [] (present-empty: source authoritatively has no snapshot, import
+    // clears the destination); unreadable/malformed -> null (omit the bundle key, import
+    // leaves the destination untouched); valid -> the wrapped snapshot.
+    function fv3_export_order_snapshot(string $type): ?array {
+        $path = fv3_order_snapshot_file($type);
+        if (!file_exists($path)) return [];
+        $raw = @file_get_contents($path);
+        $data = ($raw !== false) ? json_decode($raw, true) : null;
+        if (!is_array($data) || !isset($data['entries']) || !is_array($data['entries'])) return null;
+        return $data;
+    }
+
     // Re-insert folder rows into the stock sort prefs from FV3's own order snapshot.
     // Fires when prefs has entries but at least one live folder is unpositioned —
     // the post-reinstall state, or a folder whose entry went missing. Insert-only —
@@ -1037,10 +1050,12 @@
             'settings' => fv3_read_json("$configDir/settings.json"),
             'autostart' => fv3_read_json("$configDir/autostart.json"),
             'css_config' => fv3_read_json("$configDir/css-config.json"),
-            'order_docker' => fv3_read_json("$configDir/order-docker.json"),
-            'order_vm' => fv3_read_json("$configDir/order-vm.json"),
             'custom_styles' => []
         ];
+        foreach (['docker', 'vm'] as $ot) {
+            $snapExport = fv3_export_order_snapshot($ot);
+            if ($snapExport !== null) { $bundle["order_$ot"] = $snapExport; }
+        }
         $stylesDir = "$configDir/styles";
         $cssSize = 0;
         if (is_dir($stylesDir)) {
