@@ -190,7 +190,7 @@ table.sortable td:last-child {
 .fv3-label-claim {
     margin-left: 0.6em;
     font-size: 0.85em;
-    opacity: 0.6;
+    color: var(--orange-500, #ff8c2f);
     white-space: nowrap;
     cursor: help;
 }
