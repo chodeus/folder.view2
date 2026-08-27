@@ -42,14 +42,6 @@ const createFolders = async () => {
         fv3ResolveRenamedContainers(folders, containersInfo, 'docker');
         Object.values(folders).forEach(f => fv3ApplyDefaults(f));
 
-        // Explicit members + label claims of ANY folder beat regex matches elsewhere (issue #46);
-        // explicit members alone also beat label claims elsewhere (issue #55)
-        const fv3FolderNames = new Set(Object.values(folders).map(f => f.name));
-        const fv3ExplicitMembers = Object.values(folders).flatMap(f => Array.isArray(f.containers) ? f.containers : []);
-        const fv3AssignedElsewhere = fv3ExplicitMembers
-            .concat(Object.keys(containersInfo).filter(n => { const l = containersInfo[n]?.Labels?.['folder.view3']; return l && fv3FolderNames.has(l); }));
-        Object.values(folders).forEach(f => { f.fv3AssignedElsewhere = fv3AssignedElsewhere; f.fv3ExplicitMembers = fv3ExplicitMembers; });
-
         let newOnes = order.filter(x => !unraidOrder.includes(x));
 
         for (let index = 0; index < unraidOrder.length; index++) {
@@ -77,6 +69,14 @@ const createFolders = async () => {
             order: order,
             containersInfo: containersInfo
         }}));
+
+        // Explicit members/label claims of ANY folder beat regex elsewhere (#46); explicit beats label (#55).
+        // Must stay AFTER the pre-folders-creation dispatch — extensions may edit memberships there.
+        const fv3FolderNames = new Set(Object.values(folders).map(f => f.name));
+        const fv3ExplicitMembers = Object.values(folders).flatMap(f => Array.isArray(f.containers) ? f.containers : []);
+        const fv3AssignedElsewhere = fv3ExplicitMembers
+            .concat(Object.keys(containersInfo).filter(n => { const l = containersInfo[n]?.Labels?.['folder.view3']; return l && fv3FolderNames.has(l); }));
+        Object.values(folders).forEach(f => { f.fv3AssignedElsewhere = fv3AssignedElsewhere; f.fv3ExplicitMembers = fv3ExplicitMembers; });
 
         for (let key = 0; key < order.length; key++) {
             const container = order[key];
