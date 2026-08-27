@@ -437,6 +437,80 @@
         fv3_debug_log("fv3_apply_custom_autostart: wrote " . count($newAutoStart) . " entries (" . count($sequence) . " sequenced)");
     }
 
+    // `folder.view3: <name>` label claims keyed by container name — getDockerContainers()
+    // carries no Labels, so read the same raw endpoint readInfo() uses. Returns null on a
+    // failed/partial/unnamed read so callers fail closed rather than treat label-assigned
+    // containers as unassigned (#214 class).
+    function fv3_read_container_labels(DockerClient $dockerClient, array $allContainerNames): ?array {
+        $ctLabels = [];
+        $rawCts = $dockerClient->getDockerJSON("/containers/json?all=1");
+        if (!is_array($rawCts) || count($rawCts) < count($allContainerNames)) {
+            fv3_debug_log("fv3_read_container_labels: read unavailable or incomplete");
+            return null;
+        }
+        foreach ($rawCts as $rc) {
+            $rcName = is_array($rc) ? ltrim($rc['Names'][0] ?? '', '/') : '';
+            if ($rcName === '') {
+                fv3_debug_log("fv3_read_container_labels: unnamed container in read");
+                return null;
+            }
+            $rcLabel = $rc['Labels']['folder.view3'] ?? '';
+            if (is_string($rcLabel) && $rcLabel !== '') { $ctLabels[$rcName] = $rcLabel; }
+        }
+        return $ctLabels;
+    }
+
+    // Effective membership — explicit > label > regex (issues #46/#55). Single source of
+    // truth shared by syncContainerOrder and read_membership.php (issue #61). Returns null
+    // on a corrupt persisted shape so callers fail closed instead of fataling mid-compute.
+    function fv3_compute_folder_membership(array $folders, array $allContainerNames, array $ctLabels): ?array {
+        foreach ($folders as $folder) {
+            if (!is_array($folder) || !is_array($folder['containers'] ?? [])) { return null; }
+        }
+        $folderNameSet = [];
+        foreach ($folders as $folder) {
+            if (isset($folder['name'])) { $folderNameSet[$folder['name']] = true; }
+        }
+        $folderContainers = [];
+        $folderNames = [];
+        $assignedContainers = [];
+        $explicitMembers = [];
+        foreach ($folders as $folder) {
+            $explicitMembers = array_merge($explicitMembers, $folder['containers'] ?? []);
+        }
+        $explicitAssigned = $explicitMembers;
+        foreach ($ctLabels as $ctName => $ctLabel) {
+            if (isset($folderNameSet[$ctLabel])) { $explicitAssigned[] = $ctName; }
+        }
+        foreach ($folders as $folderId => $folder) {
+            $members = $folder['containers'] ?? [];
+            // is_string + trim, not empty(): empty("0") is true in PHP, so a regex of "0" was
+            // silently dropped while docker.js applied it. The type check mirrors docker.js and
+            // keeps a non-string regex from fataling trim() (TypeError on PHP 8).
+            if (is_string($folder['regex'] ?? null) && trim($folder['regex']) !== '') {
+                $regex = '/' . str_replace('/', '\/', $folder['regex']) . '/';
+                foreach ($allContainerNames as $name) {
+                    if (@preg_match($regex, $name) && !in_array($name, $members) && !in_array($name, $explicitAssigned)) {
+                        $members[] = $name;
+                    }
+                }
+            }
+            // Explicit containers[] entries anywhere win over a label claim (issue #55)
+            foreach ($ctLabels as $ctName => $ctLabel) {
+                if ($ctLabel === ($folder['name'] ?? null) && !in_array($ctName, $members) && !in_array($ctName, $explicitMembers)) {
+                    $members[] = $ctName;
+                }
+            }
+            $members = array_values(array_filter($members, function($m) use ($allContainerNames, $assignedContainers) {
+                return in_array($m, $allContainerNames) && !in_array($m, $assignedContainers);
+            }));
+            $folderContainers["folder-$folderId"] = $members;
+            $folderNames["folder-$folderId"] = $folder['name'] ?? "folder-$folderId";
+            $assignedContainers = array_merge($assignedContainers, $members);
+        }
+        return ['containers' => $folderContainers, 'names' => $folderNames, 'assigned' => $assignedContainers];
+    }
+
     function syncContainerOrder(string $type): void {
         // Rewrites the autostart file to match what FV3 renders on screen — top-to-bottom,
         // folder members left-to-right in their editor-chosen order. Render order itself is
@@ -474,78 +548,22 @@
             return;
         }
 
-        // `folder.view3: <name>` label claims, keyed by container name. getDockerContainers()
-        // carries no Labels, so read them from the same raw endpoint readInfo() uses.
-        $ctLabels = [];
-        $rawCts = $dockerClient->getDockerJSON("/containers/json?all=1");
-        // Fail closed. A failed or partial read yields no label claims, and the order below would
-        // then write label-assigned containers back out as unassigned — the same hazard $ctListComplete
-        // guards against above, so abort rather than fall through to the permissive path.
-        if (!is_array($rawCts) || count($rawCts) < count($allContainerNames)) {
+        $ctLabels = fv3_read_container_labels($dockerClient, $allContainerNames);
+        // Fail closed: without label claims the order below would write label-assigned
+        // containers back out as unassigned — the same hazard $ctListComplete guards above.
+        if ($ctLabels === null) {
             fv3_debug_log("syncContainerOrder: label read unavailable or incomplete, aborting before write");
             return;
         }
-        foreach ($rawCts as $rc) {
-            $rcName = is_array($rc) ? ltrim($rc['Names'][0] ?? '', '/') : '';
-            if ($rcName === '') {
-                fv3_debug_log("syncContainerOrder: unnamed container in label read, aborting before write");
-                return;
-            }
-            $rcLabel = $rc['Labels']['folder.view3'] ?? '';
-            if (is_string($rcLabel) && $rcLabel !== '') { $ctLabels[$rcName] = $rcLabel; }
+        $membership = fv3_compute_folder_membership($folders, $allContainerNames, $ctLabels);
+        // Corrupt persisted shapes fail closed before the autostart write, not fatal mid-sync
+        if ($membership === null) {
+            fv3_debug_log("syncContainerOrder: folder entry with invalid containers shape, aborting before write");
+            return;
         }
-        $folderNameSet = [];
-        foreach ($folders as $folder) {
-            if (isset($folder['name'])) { $folderNameSet[$folder['name']] = true; }
-        }
-
-        // A corrupt persisted shape must abort before the autostart write, not fatal mid-sync
-        foreach ($folders as $folder) {
-            if (!is_array($folder) || !is_array($folder['containers'] ?? [])) {
-                fv3_debug_log("syncContainerOrder: folder entry with invalid containers shape, aborting before write");
-                return;
-            }
-        }
-
-        $folderContainers = [];
-        $folderNames = [];
-        $assignedContainers = [];
-        // Explicit members and label claims of any folder beat regex matches elsewhere (issue #46);
-        // explicit members alone also beat label claims elsewhere (issue #55)
-        $explicitMembers = [];
-        foreach ($folders as $folder) {
-            $explicitMembers = array_merge($explicitMembers, $folder['containers'] ?? []);
-        }
-        $explicitAssigned = $explicitMembers;
-        foreach ($ctLabels as $ctName => $ctLabel) {
-            if (isset($folderNameSet[$ctLabel])) { $explicitAssigned[] = $ctName; }
-        }
-        foreach ($folders as $folderId => $folder) {
-            $members = $folder['containers'] ?? [];
-            // is_string + trim, not empty(): empty("0") is true in PHP, so a regex of "0" was
-            // silently dropped while docker.js applied it. The type check mirrors docker.js and
-            // keeps a non-string regex from fataling trim() (TypeError on PHP 8).
-            if (is_string($folder['regex'] ?? null) && trim($folder['regex']) !== '') {
-                $regex = '/' . str_replace('/', '\/', $folder['regex']) . '/';
-                foreach ($allContainerNames as $name) {
-                    if (@preg_match($regex, $name) && !in_array($name, $members) && !in_array($name, $explicitAssigned)) {
-                        $members[] = $name;
-                    }
-                }
-            }
-            // Explicit containers[] entries anywhere win over a label claim (issue #55)
-            foreach ($ctLabels as $ctName => $ctLabel) {
-                if ($ctLabel === ($folder['name'] ?? null) && !in_array($ctName, $members) && !in_array($ctName, $explicitMembers)) {
-                    $members[] = $ctName;
-                }
-            }
-            $members = array_values(array_filter($members, function($m) use ($allContainerNames, $assignedContainers) {
-                return in_array($m, $allContainerNames) && !in_array($m, $assignedContainers);
-            }));
-            $folderContainers["folder-$folderId"] = $members;
-            $folderNames["folder-$folderId"] = $folder['name'] ?? "folder-$folderId";
-            $assignedContainers = array_merge($assignedContainers, $members);
-        }
+        $folderContainers = $membership['containers'];
+        $folderNames = $membership['names'];
+        $assignedContainers = $membership['assigned'];
 
         // Build $currentOrder. Source:
         //   - userprefs.cfg if it exists (user has drag-reordered at some point)
