@@ -1116,7 +1116,13 @@
                     // Exactly [] is how export represents "source has no snapshot" — clear any
                     // pre-existing destination snapshot so it can't position the freshly
                     // imported folders. A bundle without the key leaves the destination alone.
-                    if (@unlink($snapFile)) { $restored[] = "order-$t.json (cleared)"; }
+                    if (file_exists($snapFile)) {
+                        if (!@unlink($snapFile)) {
+                            // A stale snapshot the bundle said to remove must not survive a "success"
+                            return ['error' => "Could not clear order-$t.json — remove it manually (earlier sections were imported)"];
+                        }
+                        $restored[] = "order-$t.json (cleared)";
+                    }
                     continue;
                 }
                 // Same validation as export: a malformed wrapper is corrupt/tampered input and
@@ -1129,7 +1135,9 @@
                     // Validated entries can only fail on the atomic write itself; the source
                     // provably had a different snapshot, so drop the stale destination copy
                     // rather than let it position the imported folders (heal simply disables).
-                    @unlink($snapFile);
+                    if (file_exists($snapFile) && !@unlink($snapFile)) {
+                        return ['error' => "Could not update order-$t.json — remove it manually (earlier sections were imported)"];
+                    }
                 }
                 continue;
             }
