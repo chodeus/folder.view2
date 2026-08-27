@@ -10,6 +10,13 @@
         exit;
     }
     global $configDir;
+    // docker.json absent with the config dir present = no folders created yet, a real empty map.
+    // The dir itself missing means the flash config is gone (unmounted) — never answer for that.
+    if (!is_dir($configDir)) {
+        http_response_code(503);
+        echo json_encode(['error' => 'plugin config directory unavailable']);
+        exit;
+    }
     $folders = fv3_read_json_strict("$configDir/docker.json");
     if ($folders === null) {
         http_response_code(500);

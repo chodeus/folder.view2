@@ -442,11 +442,15 @@
     function fv3_read_container_names(DockerClient $dockerClient): array {
         $cts = $dockerClient->getDockerContainers();
         if (!is_array($cts)) { $cts = []; }
-        $raw = array_map(function($c) { return is_array($c) ? ($c['Name'] ?? '') : ''; }, $cts);
-        return [
-            'names' => array_values(array_filter($raw, function($n) { return $n !== ''; })),
-            'complete' => !empty($raw) && !in_array('', $raw, true),
-        ];
+        $names = [];
+        $complete = !empty($cts);
+        foreach ($cts as $c) {
+            $n = is_array($c) ? ($c['Name'] ?? '') : '';
+            // Drop non-strings too — one would reach preg_match() and fatal on PHP 8
+            if (!is_string($n) || $n === '') { $complete = false; continue; }
+            $names[] = $n;
+        }
+        return ['names' => $names, 'complete' => $complete];
     }
 
     // `folder.view3: <name>` label claims keyed by container name — getDockerContainers()
@@ -556,6 +560,14 @@
         // 'custom' = the Autostart tab's saved sequence overrides folder-derived order entirely
         if ($autostartMode === 'custom') {
             fv3_apply_custom_autostart($allContainerNames, $ctListComplete);
+            return;
+        }
+
+        // Folder-derived order needs the WHOLE list: containers missing from a partial read are
+        // skipped by the order walk and land appended at the end, silently reordering the file.
+        // Custom mode above is exempt — its order comes from the saved sequence, not this list.
+        if (!$ctListComplete) {
+            fv3_debug_log("syncContainerOrder: container list empty or incomplete, aborting before write");
             return;
         }
 
