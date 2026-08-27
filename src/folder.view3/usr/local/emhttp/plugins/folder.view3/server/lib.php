@@ -437,6 +437,18 @@
         fv3_debug_log("fv3_apply_custom_autostart: wrote " . count($newAutoStart) . " entries (" . count($sequence) . " sequenced)");
     }
 
+    // Container names from getDockerContainers(). 'complete' is false when the read is empty
+    // or any entry is unnamed — a degraded list must not drive autostart pruning (#214).
+    function fv3_read_container_names(DockerClient $dockerClient): array {
+        $cts = $dockerClient->getDockerContainers();
+        if (!is_array($cts)) { $cts = []; }
+        $raw = array_map(function($c) { return is_array($c) ? ($c['Name'] ?? '') : ''; }, $cts);
+        return [
+            'names' => array_values(array_filter($raw, function($n) { return $n !== ''; })),
+            'complete' => !empty($raw) && !in_array('', $raw, true),
+        ];
+    }
+
     // `folder.view3: <name>` label claims keyed by container name — getDockerContainers()
     // carries no Labels, so read the same raw endpoint readInfo() uses. Returns null on a
     // failed/partial/unnamed read so callers fail closed rather than treat label-assigned
@@ -465,7 +477,8 @@
     // on a corrupt persisted shape so callers fail closed instead of fataling mid-compute.
     function fv3_compute_folder_membership(array $folders, array $allContainerNames, array $ctLabels): ?array {
         foreach ($folders as $folder) {
-            if (!is_array($folder) || !is_array($folder['containers'] ?? [])) { return null; }
+            if (!is_array($folder) || !is_array($folder['containers'] ?? [])
+                || (isset($folder['name']) && !is_string($folder['name']))) { return null; }
         }
         $folderNameSet = [];
         foreach ($folders as $folder) {
@@ -535,12 +548,10 @@
         }
 
         $dockerClient = new DockerClient();
-        $cts = $dockerClient->getDockerContainers();
-        if (!is_array($cts)) { $cts = []; }
-        $ctNamesRaw = array_map(function($c) { return is_array($c) ? ($c['Name'] ?? '') : ''; }, $cts);
-        $allContainerNames = array_values(array_filter($ctNamesRaw, function($n) { return $n !== ''; }));
+        $ctNames = fv3_read_container_names($dockerClient);
+        $allContainerNames = $ctNames['names'];
         // Prune below only on a complete, fully-named container list — a degraded Docker read must not wipe autostart entries (#214)
-        $ctListComplete = !empty($ctNamesRaw) && !in_array('', $ctNamesRaw, true);
+        $ctListComplete = $ctNames['complete'];
 
         // 'custom' = the Autostart tab's saved sequence overrides folder-derived order entirely
         if ($autostartMode === 'custom') {

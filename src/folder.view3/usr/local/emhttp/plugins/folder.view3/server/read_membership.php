@@ -17,10 +17,7 @@
         exit;
     }
     $dockerClient = new DockerClient();
-    $cts = $dockerClient->getDockerContainers();
-    if (!is_array($cts)) { $cts = []; }
-    $ctNamesRaw = array_map(function($c) { return is_array($c) ? ($c['Name'] ?? '') : ''; }, $cts);
-    $allContainerNames = array_values(array_filter($ctNamesRaw, function($n) { return $n !== ''; }));
+    $allContainerNames = fv3_read_container_names($dockerClient)['names'];
     $ctLabels = fv3_read_container_labels($dockerClient, $allContainerNames);
     // Fail closed — the client keeps its explicit-only fallback rather than render half a map
     if ($ctLabels === null) {
