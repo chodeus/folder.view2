@@ -277,5 +277,6 @@
     "autostart-not-started": "Sin autoarranque",
     "autostart-col-container": "Contenedor",
     "autostart-col-folder": "Carpeta",
-    "autostart-col-wait": "Espera (s)"
+    "autostart-col-wait": "Espera (s)",
+    "label-claim-tooltip": "Reclamado por una etiqueta folder.view3 — una asignación explícita a una carpeta tiene prioridad"
 }

@@ -277,5 +277,6 @@
     "autostart-not-started": "Not autostarted",
     "autostart-col-container": "Container",
     "autostart-col-folder": "Folder",
-    "autostart-col-wait": "Wait (s)"
+    "autostart-col-wait": "Wait (s)",
+    "label-claim-tooltip": "Claimed by a folder.view3 label — an explicit folder assignment anywhere overrides it"
 }

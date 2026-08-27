@@ -42,11 +42,13 @@ const createFolders = async () => {
         fv3ResolveRenamedContainers(folders, containersInfo, 'docker');
         Object.values(folders).forEach(f => fv3ApplyDefaults(f));
 
-        // Explicit members + label claims of ANY folder beat regex matches elsewhere (issue #46)
+        // Explicit members + label claims of ANY folder beat regex matches elsewhere (issue #46);
+        // explicit members alone also beat label claims elsewhere (issue #55)
         const fv3FolderNames = new Set(Object.values(folders).map(f => f.name));
-        const fv3AssignedElsewhere = Object.values(folders).flatMap(f => Array.isArray(f.containers) ? f.containers : [])
+        const fv3ExplicitMembers = Object.values(folders).flatMap(f => Array.isArray(f.containers) ? f.containers : []);
+        const fv3AssignedElsewhere = fv3ExplicitMembers
             .concat(Object.keys(containersInfo).filter(n => { const l = containersInfo[n]?.Labels?.['folder.view3']; return l && fv3FolderNames.has(l); }));
-        Object.values(folders).forEach(f => { f.fv3AssignedElsewhere = fv3AssignedElsewhere; });
+        Object.values(folders).forEach(f => { f.fv3AssignedElsewhere = fv3AssignedElsewhere; f.fv3ExplicitMembers = fv3ExplicitMembers; });
 
         let newOnes = order.filter(x => !unraidOrder.includes(x));
 
@@ -302,7 +304,8 @@ const createFolderDocker = (folder, id, position, order, containersInfo, folders
         } catch (e) { console.error('[FV3] Invalid regex:', folder.regex, e); }
     }
 
-    folder.containers = folder.containers.concat(order.filter(el => containersInfo[el]?.Labels['folder.view3'] === folder.name));
+    // Skip containers explicitly assigned to any folder — explicit beats label (issue #55)
+    folder.containers = folder.containers.concat(order.filter(el => containersInfo[el]?.Labels?.['folder.view3'] === folder.name && !folder.containers.includes(el) && !(folder.fv3ExplicitMembers || []).includes(el)));
 
     const fld = `<div class="folder-showcase-outer-${id} folder-showcase-outer"><span class="outer solid apps stopped folder-docker"><span id="folder-id-${id}" onclick='addDockerFolderContext("${id}")' class="hand docker folder-hand-docker fv3-folder-hand fv3-folder-hand-docker"><img src="${escapeHtml(folder.icon || '/plugins/dynamix.docker.manager/images/question.png')}" class="img folder-img-docker fv3-folder-icon fv3-folder-icon-docker" onerror="this.onerror=null;this.src='/plugins/dynamix.docker.manager/images/question.png';"></span><span class="inner folder-inner-docker fv3-folder-inner fv3-folder-inner-docker"><span class="folder-appname-docker fv3-folder-appname fv3-folder-appname-docker">${escapeHtml(folder.name)}</span><br><i class="fa fa-square stopped red-text folder-load-status-docker fv3-folder-status-icon fv3-folder-status-icon-docker"></i><span class="state folder-state-docker fv3-folder-state fv3-folder-state-docker">${$.i18n('stopped')}</span></span><div class="folder-storage fv3-folder-storage"></div></span><div class="folder-showcase-${id} folder-showcase fv3-folder-showcase" data-folder-name="${escapeHtml(folder.name)}"></div></div>`;
 

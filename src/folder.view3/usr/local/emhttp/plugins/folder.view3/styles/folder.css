@@ -186,6 +186,15 @@ table.sortable td:last-child {
     text-align: center;
 }
 
+/* fa-tag claim marker rendered by updateList() for label-claimed containers (issue #55) */
+.fv3-label-claim {
+    margin-left: 0.6em;
+    font-size: 0.85em;
+    opacity: 0.6;
+    white-space: nowrap;
+    cursor: help;
+}
+
 table.sortable td .switch-button-background,
 table.sortable td .fv3-toggle {
     float: none;

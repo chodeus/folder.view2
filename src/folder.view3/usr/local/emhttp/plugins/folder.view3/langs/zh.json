@@ -277,5 +277,6 @@
     "autostart-not-started": "未自动启动",
     "autostart-col-container": "容器",
     "autostart-col-folder": "文件夹",
-    "autostart-col-wait": "等待（秒）"
+    "autostart-col-wait": "等待（秒）",
+    "label-claim-tooltip": "已被 folder.view3 标签认领 — 明确的文件夹分配将优先于标签"
 }

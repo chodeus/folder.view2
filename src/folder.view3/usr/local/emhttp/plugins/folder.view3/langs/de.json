@@ -277,5 +277,6 @@
     "autostart-not-started": "Kein Autostart",
     "autostart-col-container": "Container",
     "autostart-col-folder": "Ordner",
-    "autostart-col-wait": "Warten (s)"
+    "autostart-col-wait": "Warten (s)",
+    "label-claim-tooltip": "Durch ein folder.view3-Label beansprucht — eine explizite Ordnerzuweisung hat Vorrang"
 }

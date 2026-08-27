@@ -277,5 +277,6 @@
     "autostart-not-started": "Sans démarrage auto",
     "autostart-col-container": "Conteneur",
     "autostart-col-folder": "Dossier",
-    "autostart-col-wait": "Attente (s)"
+    "autostart-col-wait": "Attente (s)",
+    "label-claim-tooltip": "Revendiqué par une étiquette folder.view3 — une affectation explicite à un dossier est prioritaire"
 }

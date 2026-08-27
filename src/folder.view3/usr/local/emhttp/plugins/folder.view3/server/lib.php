@@ -502,11 +502,13 @@
         $folderContainers = [];
         $folderNames = [];
         $assignedContainers = [];
-        // Explicit members and label claims of any folder beat regex matches elsewhere (issue #46)
-        $explicitAssigned = [];
+        // Explicit members and label claims of any folder beat regex matches elsewhere (issue #46);
+        // explicit members alone also beat label claims elsewhere (issue #55)
+        $explicitMembers = [];
         foreach ($folders as $folder) {
-            $explicitAssigned = array_merge($explicitAssigned, $folder['containers'] ?? []);
+            $explicitMembers = array_merge($explicitMembers, $folder['containers'] ?? []);
         }
+        $explicitAssigned = $explicitMembers;
         foreach ($ctLabels as $ctName => $ctLabel) {
             if (isset($folderNameSet[$ctLabel])) { $explicitAssigned[] = $ctName; }
         }
@@ -523,8 +525,9 @@
                     }
                 }
             }
+            // Explicit containers[] entries anywhere win over a label claim (issue #55)
             foreach ($ctLabels as $ctName => $ctLabel) {
-                if ($ctLabel === ($folder['name'] ?? null) && !in_array($ctName, $members)) {
+                if ($ctLabel === ($folder['name'] ?? null) && !in_array($ctName, $members) && !in_array($ctName, $explicitMembers)) {
                     $members[] = $ctName;
                 }
             }
