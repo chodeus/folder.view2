@@ -499,6 +499,14 @@
             if (isset($folder['name'])) { $folderNameSet[$folder['name']] = true; }
         }
 
+        // A corrupt persisted shape must abort before the autostart write, not fatal mid-sync
+        foreach ($folders as $folder) {
+            if (!is_array($folder) || !is_array($folder['containers'] ?? [])) {
+                fv3_debug_log("syncContainerOrder: folder entry with invalid containers shape, aborting before write");
+                return;
+            }
+        }
+
         $folderContainers = [];
         $folderNames = [];
         $assignedContainers = [];
