@@ -768,7 +768,15 @@
         if(!file_exists("$configDir/$type.json")) { return; }
         $updates = json_decode($data, true);
         if (json_last_error() !== JSON_ERROR_NONE || !is_array($updates)) { http_response_code(400); exit; }
-        $fileData = fv3_read_json("$configDir/$type.json");
+        // Strict, like updateFolder: the dedupe below rewrites every folder, so a
+        // corrupt-as-empty read must abort rather than persist a pruned file
+        $fileData = fv3_read_json_strict("$configDir/$type.json");
+        if ($fileData === null) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => "$type.json is unreadable — refusing to save so existing folders are not wiped"]);
+            exit;
+        }
         $changed = false;
         foreach ($updates as $folderId => $patch) {
             if (!preg_match('/^[A-Za-z0-9+\/=]+$/', $folderId)) continue;
