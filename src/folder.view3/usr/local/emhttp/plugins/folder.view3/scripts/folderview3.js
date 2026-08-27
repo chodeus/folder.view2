@@ -592,6 +592,11 @@ const fv3ExportAll = async () => {
     try {
         const resp = await fetch('/plugins/folder.view3/server/export_all.php', { credentials: 'same-origin' });
         const data = await resp.json();
+        if (!resp.ok || data.error) {
+            // Never save an aborted export as a backup file
+            swal({ title: 'Export Failed', text: data.error || ('Server returned ' + resp.status), type: 'error' });
+            return;
+        }
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);

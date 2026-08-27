@@ -30,6 +30,37 @@
         return is_array($data) ? $data : [];
     }
 
+    // Like fv3_read_json but keeps the tri-state: [] = file absent (a legitimate fresh
+    // state), null = file EXISTS but is unreadable or malformed. Use before any write
+    // that would persist "empty" — corrupt-as-empty must fail closed, never fall through.
+    function fv3_read_json_strict(string $path): ?array {
+        if (!file_exists($path)) return [];
+        $raw = @file_get_contents($path);
+        if ($raw === false) return null;
+        if (trim($raw) === '') return [];
+        $data = json_decode($raw, true);
+        return is_array($data) ? $data : null;
+    }
+
+    // Shared guard for the flock'd settings read-modify-write: a corrupt (non-empty,
+    // undecodable) settings.json aborts the request instead of resetting every other
+    // setting on the next save.
+    function fv3_decode_settings_or_abort($fp, $raw): array {
+        // A failed stream read (false) is as unreadable as corrupt JSON — never treat
+        // either as an empty file, or the next save resets every other setting.
+        if (is_string($raw) && trim($raw) === '') return [];
+        $data = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($data)) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'settings.json is unreadable — refusing to save so other settings are not reset']);
+            exit;
+        }
+        return $data;
+    }
+
     function fv3_debug_log($message) {
         if (FV3_DEBUG_MODE) {
             global $fv3_debug_log_file;
@@ -305,7 +336,10 @@
 
     function readAutostartConfig(): array {
         global $configDir;
-        $cfg = fv3_read_json("$configDir/autostart.json");
+        $cfg = fv3_read_json_strict("$configDir/autostart.json");
+        // Corrupt config fails closed to 'off' (pure stock behaviour, no autostart writes)
+        // rather than silently flipping a custom/off user to folder mode.
+        if ($cfg === null) return ['mode' => 'off', 'sequence' => []];
         $mode = $cfg['mode'] ?? 'folder';
         if (!in_array($mode, ['folder', 'custom', 'off'], true)) $mode = 'folder';
         $sequence = [];
@@ -419,7 +453,12 @@
 
         $prefsFile = "/boot/config/plugins/dockerMan/userprefs.cfg";
         $foldersFile = "$configDir/docker.json";
-        $folders = fv3_read_json($foldersFile);
+        $folders = fv3_read_json_strict($foldersFile);
+        if ($folders === null) {
+            // Corrupt folder config must not rewrite the autostart file as if no folders exist
+            fv3_debug_log("syncContainerOrder: $foldersFile unreadable, aborting before write");
+            return;
+        }
 
         $dockerClient = new DockerClient();
         $cts = $dockerClient->getDockerContainers();
@@ -621,7 +660,14 @@
             echo json_encode(['error' => "The folder name 'root' is reserved by Unraid's Docker organizer"]);
             exit;
         }
-        $fileData = fv3_read_json("$configDir/$type.json");
+        $fileData = fv3_read_json_strict("$configDir/$type.json");
+        if ($fileData === null) {
+            // Corrupt config must fail closed — merging onto empty would wipe every other folder
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => "$type.json is unreadable — refusing to save so existing folders are not wiped"]);
+            exit;
+        }
         $fileData[$id] = $decoded;
         $path = "$configDir/$type.json";
         fv3_atomic_write($path, json_encode($fileData));
@@ -663,7 +709,14 @@
     function deleteFolder(string $type, string $id) : void {
         global $configDir;
         if(!file_exists("$configDir/$type.json")) { createFile($type); return; }
-        $fileData = fv3_read_json("$configDir/$type.json");
+        $fileData = fv3_read_json_strict("$configDir/$type.json");
+        if ($fileData === null) {
+            // Corrupt config must fail closed — writing the fallback would wipe every folder
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => "$type.json is unreadable — refusing to delete so the folder config is not wiped"]);
+            exit;
+        }
         unset($fileData[$id]);
         $path = "$configDir/$type.json";
         fv3_atomic_write($path, json_encode($fileData));
@@ -728,7 +781,7 @@
         if (!$fp) { http_response_code(500); exit; }
         flock($fp, LOCK_EX);
         $raw = stream_get_contents($fp);
-        $data = json_decode($raw, true) ?: [];
+        $data = fv3_decode_settings_or_abort($fp, $raw);
         $data[$key] = $value;
         ftruncate($fp, 0);
         rewind($fp);
@@ -780,7 +833,7 @@
         if (!$fp) { http_response_code(500); exit; }
         flock($fp, LOCK_EX);
         $raw = stream_get_contents($fp);
-        $data = json_decode($raw, true) ?: [];
+        $data = fv3_decode_settings_or_abort($fp, $raw);
         foreach ($settings as $key => $value) {
             $key = (string)$key;
             $value = (string)$value;
@@ -820,7 +873,7 @@
         if (!$fp) { http_response_code(500); exit; }
         flock($fp, LOCK_EX);
         $raw = stream_get_contents($fp);
-        $data = json_decode($raw, true) ?: [];
+        $data = fv3_decode_settings_or_abort($fp, $raw);
         if ($value === '') { unset($data[$key]); } else { $data[$key] = $value; }
         ftruncate($fp, 0);
         rewind($fp);
@@ -1053,16 +1106,25 @@
     function exportAll() : array {
         global $configDir;
         $unraidIni = @parse_ini_file('/etc/unraid-version');
+        // Strict reads: a config file that exists but can't be parsed aborts the export —
+        // a backup silently exporting corrupt-as-empty would wipe good data when imported.
+        $sections = [];
+        foreach (['docker' => 'docker.json', 'vm' => 'vm.json', 'settings' => 'settings.json',
+                  'autostart' => 'autostart.json', 'css_config' => 'css-config.json'] as $bk => $bf) {
+            $sec = fv3_read_json_strict("$configDir/$bf");
+            if ($sec === null) return ['error' => "$bf is unreadable or corrupt — export aborted so an incomplete backup can't overwrite good data on import"];
+            $sections[$bk] = $sec;
+        }
         $bundle = [
             'fv3_export_version' => 1,
             'plugin_version' => trim(@file_get_contents("$configDir/version") ?: ''),
             'unraid_version' => is_array($unraidIni) && isset($unraidIni['version']) ? $unraidIni['version'] : '',
             'exported' => date('c'),
-            'docker' => fv3_read_json("$configDir/docker.json"),
-            'vm' => fv3_read_json("$configDir/vm.json"),
-            'settings' => fv3_read_json("$configDir/settings.json"),
-            'autostart' => fv3_read_json("$configDir/autostart.json"),
-            'css_config' => fv3_read_json("$configDir/css-config.json"),
+            'docker' => $sections['docker'],
+            'vm' => $sections['vm'],
+            'settings' => $sections['settings'],
+            'autostart' => $sections['autostart'],
+            'css_config' => $sections['css_config'],
             'custom_styles' => []
         ];
         foreach (['docker', 'vm'] as $ot) {
