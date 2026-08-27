@@ -221,7 +221,13 @@
         if (!file_exists($path)) return [];
         $raw = @file_get_contents($path);
         $data = ($raw !== false) ? json_decode($raw, true) : null;
-        if (!is_array($data) || !isset($data['entries']) || !is_array($data['entries'])) return null;
+        if (!is_array($data) || ($data['fv3_order_version'] ?? null) !== 1
+            || !isset($data['entries']) || !is_array($data['entries'])) return null;
+        // saveOrderSnapshot never writes an empty or unsanitary list — anything that fails
+        // its own rules is not our file (corrupt/tampered), so omit it rather than export
+        // a present-empty key that would clear the destination snapshot on import.
+        $clean = fv3_sanitize_order_entries($data['entries']);
+        if ($clean === null || empty($clean) || $clean !== array_values($data['entries'])) return null;
         return $data;
     }
 
