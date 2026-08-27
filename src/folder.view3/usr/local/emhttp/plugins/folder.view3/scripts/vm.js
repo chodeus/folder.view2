@@ -811,7 +811,10 @@ $.ajaxPrefilter((options, originalOptions, jqXHR) => {
             fv3SnapshotGen === fv3OrderSnapshotGen
                 ? $.post('/plugins/folder.view3/server/update_order.php', {type: 'vm', names: fv3SnapshotNames})
                 : undefined
-        ).catch(() => {});
+        ).catch(() => {
+            // Reorder itself already saved via stock UserPrefs — only the durability copy failed
+            console.warn('[FV3] VM order snapshot save failed; layout restore after a reinstall may use an older order.');
+        });
         $('.unhide').show();
     } else if (options.url === "/plugins/dynamix.vm.manager/include/VMMachines.php" && !loadedFolder) {
         jqXHR.promise().then(async () => {

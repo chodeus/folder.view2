@@ -1076,7 +1076,15 @@
             if ($key === 'order_docker' || $key === 'order_vm') {
                 $t = $key === 'order_docker' ? 'docker' : 'vm';
                 $entries = (isset($data['entries']) && is_array($data['entries'])) ? $data['entries'] : [];
-                if (!empty($entries) && saveOrderSnapshot($t, $entries)) { $restored[] = "order-$t.json"; }
+                if (empty($entries)) {
+                    // The bundle explicitly carries no snapshot (source box never saved one) —
+                    // clear any pre-existing destination snapshot so it can't position the
+                    // freshly imported folders with unrelated order data. A bundle without
+                    // the key at all (pre-snapshot export) leaves the destination untouched.
+                    if (@unlink(fv3_order_snapshot_file($t))) { $restored[] = "order-$t.json (cleared)"; }
+                    continue;
+                }
+                if (saveOrderSnapshot($t, $entries)) { $restored[] = "order-$t.json"; }
                 continue;
             }
             // Folder maps are id => folder — allowlist the id keys (same charset as update.php) so a crafted

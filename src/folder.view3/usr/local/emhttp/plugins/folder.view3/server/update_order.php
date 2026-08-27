@@ -15,5 +15,10 @@
         echo json_encode(['error' => 'invalid names']);
         exit;
     }
-    echo json_encode(['success' => saveOrderSnapshot($type, $entries)]);
+    if (!saveOrderSnapshot($type, $entries)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'snapshot write failed']);
+        exit;
+    }
+    echo json_encode(['success' => true]);
 ?>

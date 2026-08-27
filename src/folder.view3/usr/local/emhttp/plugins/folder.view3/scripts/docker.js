@@ -1385,7 +1385,10 @@ $.ajaxPrefilter((options, originalOptions, jqXHR) => {
             fv3SnapshotGen === fv3OrderSnapshotGen
                 ? $.post('/plugins/folder.view3/server/update_order.php', {type: 'docker', names: fv3SnapshotNames})
                 : undefined
-        ).catch(() => {});
+        ).catch(() => {
+            // Reorder itself already saved via stock UserPrefs — only the durability copy failed
+            console.warn('[FV3] Docker order snapshot save failed; layout restore after a reinstall may use an older order.');
+        });
     }
 });
 
