@@ -215,7 +215,9 @@
     // preserved, and already-positioned folders are kept in place and used as anchors.
     function fv3_heal_user_prefs(string $type, string $prefsFilePath): void {
         global $configDir;
-        $parsed = @parse_ini_file($prefsFilePath);
+        $raw = @file_get_contents($prefsFilePath);
+        if (!is_string($raw) || $raw === '') return;
+        $parsed = @parse_ini_string($raw);
         if (!is_array($parsed) || empty($parsed)) return;
         uksort($parsed, function($a, $b) { return (int)$a <=> (int)$b; });
         $current = array_values($parsed);
@@ -258,6 +260,9 @@
 
         $lines = [];
         foreach (array_values($out) as $i => $name) { $lines[] = $i . '="' . $name . '"'; }
+        // Stock UserPrefs writes are lockless, so re-check the source right before
+        // replacing — a concurrent reorder mid-compute aborts the heal (next load retries).
+        if (@file_get_contents($prefsFilePath) !== $raw) return;
         if (fv3_atomic_write($prefsFilePath, implode("\n", $lines) . "\n")) {
             fv3_debug_log("fv3_heal_user_prefs($type): re-inserted " . (count($out) - count($current)) . " folder position(s)");
         }
