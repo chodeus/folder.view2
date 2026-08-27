@@ -222,19 +222,23 @@
 
         $config = fv3_read_json("$configDir/$type.json");
         if (empty($config)) return;
-        if (empty(array_diff(array_keys($config), $current))) return;
+        // Prefs and the snapshot store folder rows as 'folder-<id>' placeholders
+        // (the hidden appname the stock reorder serializes); config keys are raw ids.
+        $placeholders = [];
+        foreach (array_keys($config) as $fid) { $placeholders['folder-' . $fid] = true; }
+        if (empty(array_diff(array_keys($placeholders), $current))) return;
 
         $snap = fv3_read_json(fv3_order_snapshot_file($type));
         $saved = $snap['entries'] ?? null;
         if (!is_array($saved)) return;
 
         $currentSet = array_flip($current);
-        // Each unpositioned live folder id maps to the first later snapshot entry still present in prefs (null = append)
+        // Each unpositioned live folder placeholder maps to the first later snapshot entry still present in prefs (null = append)
         $insertBefore = [];
         $pending = [];
         foreach ($saved as $entry) {
             if (!is_string($entry)) continue;
-            if (isset($config[$entry]) && !isset($currentSet[$entry])) { $pending[] = $entry; continue; }
+            if (isset($placeholders[$entry]) && !isset($currentSet[$entry])) { $pending[] = $entry; continue; }
             if (isset($currentSet[$entry])) {
                 foreach ($pending as $fid) { $insertBefore[$fid] = $entry; }
                 $pending = [];
