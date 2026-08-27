@@ -6,8 +6,8 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.08.27.1">
-<!ENTITY md5 "f1f06c4fd82cf44d78bcb02e47f243c2">
+<!ENTITY version "2026.08.28.1">
+<!ENTITY md5 "27ed48fd970fe736308a86f8f339d0ca">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
@@ -15,6 +15,10 @@
     <CHANGES>
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
+
+###2026.08.28.1
+- Folder and container order now survives an uninstall/reinstall: every drag saves an order snapshot into the plugin config, and the plugin restores folder positions from it after a reinstall (backups/exports carry it too)
+- Corrupt config files now fail safe everywhere: saving or deleting a folder, changing settings, or exporting a backup with a damaged config file aborts with an error instead of silently wiping folders or settings
 
 ###2026.08.27.1
 - Uninstalling now also removes the plugin's leftover entries from the Docker/VM sort-order preferences, including entries left behind by folder.view and folder.view2
