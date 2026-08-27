@@ -46,8 +46,10 @@
         @file_put_contents($fv3_debug_log_file, "--- FolderView3 lib.php readInfo Start ---\n");
     }
 
-    function fv3_validate_type(string $type): string {
-        if (!in_array($type, ['docker', 'vm'], true)) {
+    function fv3_validate_type($type): string {
+        // Untyped on purpose: a crafted type[]=x request reaches every endpoint as an
+        // array, and a string-typed parameter would fatal (TypeError) instead of 400ing.
+        if (!is_string($type) || !in_array($type, ['docker', 'vm'], true)) {
             http_response_code(400);
             exit;
         }
@@ -173,8 +175,127 @@
         elseif($type == 'vm') { $prefsFilePath = "$userPrefsDir/dynamix.vm.manager/userprefs.cfg"; }
         else { return '[]'; }
         if(!file_exists($prefsFilePath)) { return '[]'; }
+        // Deliberate GET side-effect (self-heal on the page-load read, mirroring the
+        // organizer mirror + rename-backfill pattern): content derives only from
+        // server-side state, is idempotent, and inserts rather than removes — a
+        // cross-site-triggered GET can only cause the same heal the next page load would.
+        fv3_heal_user_prefs($type, $prefsFilePath);
         $parsedIni = @parse_ini_file($prefsFilePath);
         return json_encode(array_values($parsedIni ?: []));
+    }
+
+    function fv3_order_snapshot_file(string $type): string {
+        global $configDir;
+        return "$configDir/order-$type.json";
+    }
+
+    // Returns the cleaned list, or null when any non-empty entry breaks the snapshot
+    // rules. Empty entries are delimiter artifacts (every stock names string ends ';')
+    // and are dropped, not treated as invalid. The rules exist because a violating
+    // entry could corrupt an ini line when healed back into userprefs.cfg.
+    function fv3_sanitize_order_entries(array $entries): ?array {
+        $clean = [];
+        foreach ($entries as $e) {
+            if (!is_string($e)) return null;
+            $e = trim($e);
+            if ($e === '') continue;
+            if (strlen($e) > 256 || strpos($e, '"') !== false || preg_match('/[\x00-\x1f\x7f]/', $e)) return null;
+            $clean[] = $e;
+        }
+        if (count($clean) > 4096) return null;
+        return $clean;
+    }
+
+    function saveOrderSnapshot(string $type, array $entries): bool {
+        $clean = fv3_sanitize_order_entries($entries);
+        if ($clean === null || empty($clean)) return false;
+        return fv3_atomic_write(fv3_order_snapshot_file($type), json_encode(['fv3_order_version' => 1, 'entries' => $clean], JSON_PRETTY_PRINT));
+    }
+
+    // Snapshot state for export, keeping the tri-state importAll() relies on:
+    // absent file -> [] (present-empty: source authoritatively has no snapshot, import
+    // clears the destination); unreadable/malformed -> null (omit the bundle key, import
+    // leaves the destination untouched); valid -> the wrapped snapshot.
+    // A snapshot wrapper saveOrderSnapshot could actually have written: version 1 and a
+    // non-empty entries list that passes sanitization unchanged. Returns the entries or
+    // null. Shared by export (file contents) and import (bundle contents) so both sides
+    // apply identical validation — anything else is corrupt/tampered and must be ignored,
+    // never treated as empty (that would clear a valid destination snapshot on import).
+    function fv3_validate_order_snapshot(array $data): ?array {
+        if (($data['fv3_order_version'] ?? null) !== 1
+            || !isset($data['entries']) || !is_array($data['entries'])) return null;
+        $clean = fv3_sanitize_order_entries($data['entries']);
+        if ($clean === null || empty($clean) || $clean !== array_values($data['entries'])) return null;
+        return $clean;
+    }
+
+    function fv3_export_order_snapshot(string $type): ?array {
+        $path = fv3_order_snapshot_file($type);
+        if (!file_exists($path)) return [];
+        $raw = @file_get_contents($path);
+        $data = ($raw !== false) ? json_decode($raw, true) : null;
+        if (!is_array($data) || fv3_validate_order_snapshot($data) === null) return null;
+        return $data;
+    }
+
+    // Re-insert folder rows into the stock sort prefs from FV3's own order snapshot.
+    // Fires when prefs has entries but at least one live folder is unpositioned —
+    // the post-reinstall state, or a folder whose entry went missing. Insert-only —
+    // existing prefs entries are never reordered or removed, so container order is
+    // preserved, and already-positioned folders are kept in place and used as anchors.
+    function fv3_heal_user_prefs(string $type, string $prefsFilePath): void {
+        global $configDir;
+        $raw = @file_get_contents($prefsFilePath);
+        if (!is_string($raw) || $raw === '') return;
+        $parsed = @parse_ini_string($raw);
+        if (!is_array($parsed) || empty($parsed)) return;
+        uksort($parsed, function($a, $b) { return (int)$a <=> (int)$b; });
+        $current = array_values($parsed);
+
+        $config = fv3_read_json("$configDir/$type.json");
+        if (empty($config)) return;
+        // Prefs and the snapshot store folder rows as 'folder-<id>' placeholders
+        // (the hidden appname the stock reorder serializes); config keys are raw ids.
+        $placeholders = [];
+        foreach (array_keys($config) as $fid) { $placeholders['folder-' . $fid] = true; }
+        if (empty(array_diff(array_keys($placeholders), $current))) return;
+
+        $snap = fv3_read_json(fv3_order_snapshot_file($type));
+        $saved = $snap['entries'] ?? null;
+        if (!is_array($saved)) return;
+
+        $currentSet = array_flip($current);
+        // Each unpositioned live folder placeholder maps to the first later snapshot entry still present in prefs (null = append)
+        $insertBefore = [];
+        $pending = [];
+        foreach ($saved as $entry) {
+            if (!is_string($entry)) continue;
+            if (isset($placeholders[$entry]) && !isset($currentSet[$entry])) { $pending[] = $entry; continue; }
+            if (isset($currentSet[$entry])) {
+                foreach ($pending as $fid) { $insertBefore[$fid] = $entry; }
+                $pending = [];
+            }
+        }
+        foreach ($pending as $fid) { $insertBefore[$fid] = null; }
+        if (empty($insertBefore)) return;
+
+        $out = [];
+        foreach ($current as $name) {
+            foreach ($insertBefore as $fid => $succ) {
+                if ($succ === $name) { $out[] = $fid; unset($insertBefore[$fid]); }
+            }
+            $out[] = $name;
+        }
+        foreach (array_keys($insertBefore) as $fid) { $out[] = $fid; }
+
+        $lines = [];
+        foreach (array_values($out) as $i => $name) { $lines[] = $i . '="' . $name . '"'; }
+        // Stock UserPrefs writes are lockless, so re-check the source right before
+        // replacing — a concurrent reorder mid-compute aborts the heal (next load retries).
+        if (@file_get_contents($prefsFilePath) !== $raw) return;
+        if (fv3_atomic_write($prefsFilePath, implode("\n", $lines) . "\n")) {
+            fv3_debug_log("fv3_heal_user_prefs($type): re-inserted " . (count($out) - count($current)) . " folder position(s)");
+        }
     }
 
     function fv3_autostart_file(): string {
@@ -944,6 +1065,10 @@
             'css_config' => fv3_read_json("$configDir/css-config.json"),
             'custom_styles' => []
         ];
+        foreach (['docker', 'vm'] as $ot) {
+            $snapExport = fv3_export_order_snapshot($ot);
+            if ($snapExport !== null) { $bundle["order_$ot"] = $snapExport; }
+        }
         $stylesDir = "$configDir/styles";
         $cssSize = 0;
         if (is_dir($stylesDir)) {
@@ -976,15 +1101,54 @@
         if (!$bundle || !isset($bundle['fv3_export_version'])) return ['error' => 'Invalid FV3 export file'];
         $restored = [];
         if (!is_dir($configDir)) @mkdir($configDir, 0770, true);
-        foreach (['docker', 'vm', 'settings', 'autostart', 'css_config'] as $key) {
+        // Confinement gate for EVERY write below, not just the snapshot branch: refuse the
+        // whole import if the config dir path resolves through a symlink or doesn't exist.
+        if (realpath($configDir) !== $configDir) {
+            return ['error' => 'Plugin config directory failed its confinement check — import aborted'];
+        }
+        foreach (['docker', 'vm', 'settings', 'autostart', 'css_config', 'order_docker', 'order_vm'] as $key) {
             if (!isset($bundle[$key]) || !is_array($bundle[$key])) continue;
             $data = $bundle[$key];
-            // Folder maps are id => folder — allowlist the id keys (same charset as update.php) so a crafted
-            // backup can't plant a folder id that breaks out of the class/onclick attributes at render (XSS).
+            if ($key === 'order_docker' || $key === 'order_vm') {
+                $t = $key === 'order_docker' ? 'docker' : 'vm';
+                $snapFile = fv3_order_snapshot_file($t);
+                if ($data === []) {
+                    // Exactly [] is how export represents "source has no snapshot" — clear any
+                    // pre-existing destination snapshot so it can't position the freshly
+                    // imported folders. A bundle without the key leaves the destination alone.
+                    if (file_exists($snapFile)) {
+                        if (!@unlink($snapFile)) {
+                            // A stale snapshot the bundle said to remove must not survive a "success"
+                            return ['error' => "Could not clear order-$t.json — remove it manually (earlier sections were imported)"];
+                        }
+                        $restored[] = "order-$t.json (cleared)";
+                    }
+                    continue;
+                }
+                // Same validation as export: a malformed wrapper is corrupt/tampered input and
+                // must not fall through to the clear branch or to a destructive restore.
+                $entries = fv3_validate_order_snapshot($data);
+                if ($entries === null) { continue; }
+                if (saveOrderSnapshot($t, $entries)) {
+                    $restored[] = "order-$t.json";
+                } else {
+                    // Validated entries can only fail on the atomic write itself; the source
+                    // provably had a different snapshot, so drop the stale destination copy
+                    // rather than let it position the imported folders (heal simply disables).
+                    if (file_exists($snapFile) && !@unlink($snapFile)) {
+                        return ['error' => "Could not update order-$t.json — remove it manually (earlier sections were imported)"];
+                    }
+                }
+                continue;
+            }
+            // Folder maps are id => folder — allowlist the id keys so a crafted backup can't
+            // plant a folder id that breaks out of class/onclick attributes at render (XSS).
+            // Alphanumeric ONLY: every generator (folder.view/2/3) strips +/= and never emits
+            // them, and an id containing +/= would break jQuery selectors at render time.
             if ($key === 'docker' || $key === 'vm') {
                 $clean = [];
                 foreach ($data as $fid => $folder) {
-                    if (is_string($fid) && preg_match('#^[A-Za-z0-9+/=]+$#D', $fid) && is_array($folder)) {
+                    if (is_string($fid) && preg_match('#^[A-Za-z0-9]+$#D', $fid) && is_array($folder)) {
                         $clean[$fid] = $folder;
                     }
                 }

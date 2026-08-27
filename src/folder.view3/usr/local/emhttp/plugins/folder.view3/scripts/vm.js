@@ -780,11 +780,15 @@ const createFolderBtn = () => fv3CreateFolderBtn('vm', '/VMs/Folder');
 
 
 // Intercept Unraid's UserPrefs request to rewrite folder/order numbers — required for autostart and draw order.
+let fv3OrderSnapshotChain = Promise.resolve();
+let fv3OrderSnapshotGen = 0;
 $.ajaxPrefilter((options, originalOptions, jqXHR) => {
     if (options.url === "/plugins/dynamix.vm.manager/include/UserPrefs.php") {
         const data = new URLSearchParams(options.data);
         if (!data.has('names')) {
-            // Reset Order POST has only {reset:true} — nothing to renumber, let it through.
+            // Reset Order POST has only {reset:true} — nothing to renumber, let it through,
+            // and invalidate queued snapshot posts so a stale pre-reset order can't be saved.
+            fv3OrderSnapshotGen++;
             return;
         }
         const containers = data.get('names').split(';');
@@ -797,6 +801,20 @@ $.ajaxPrefilter((options, originalOptions, jqXHR) => {
         data.set('names', containers.join(';'));
         data.set('index', num);
         options.data = data.toString();
+        // Snapshot the interleaved order into FV3's own config so a reinstall can
+        // restore folder positions after the uninstall prefs cleanup (server-side heal).
+        // csrf_token is auto-attached by webGui's global ajaxPrefilter (HeadInlineJS.php).
+        // Chained so a delayed earlier snapshot can't land after (and overwrite) a newer one.
+        const fv3SnapshotNames = data.get('names');
+        const fv3SnapshotGen = fv3OrderSnapshotGen;
+        fv3OrderSnapshotChain = fv3OrderSnapshotChain.then(() =>
+            fv3SnapshotGen === fv3OrderSnapshotGen
+                ? $.post('/plugins/folder.view3/server/update_order.php', {type: 'vm', names: fv3SnapshotNames})
+                : undefined
+        ).catch(() => {
+            // Reorder itself already saved via stock UserPrefs — only the durability copy failed
+            console.warn('[FV3] VM order snapshot save failed; layout restore after a reinstall may use an older order.');
+        });
         $('.unhide').show();
     } else if (options.url === "/plugins/dynamix.vm.manager/include/VMMachines.php" && !loadedFolder) {
         jqXHR.promise().then(async () => {
