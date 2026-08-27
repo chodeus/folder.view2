@@ -175,6 +175,10 @@
         elseif($type == 'vm') { $prefsFilePath = "$userPrefsDir/dynamix.vm.manager/userprefs.cfg"; }
         else { return '[]'; }
         if(!file_exists($prefsFilePath)) { return '[]'; }
+        // Deliberate GET side-effect (self-heal on the page-load read, mirroring the
+        // organizer mirror + rename-backfill pattern): content derives only from
+        // server-side state, is idempotent, and inserts rather than removes — a
+        // cross-site-triggered GET can only cause the same heal the next page load would.
         fv3_heal_user_prefs($type, $prefsFilePath);
         $parsedIni = @parse_ini_file($prefsFilePath);
         return json_encode(array_values($parsedIni ?: []));
