@@ -17,7 +17,15 @@
         exit;
     }
     $dockerClient = new DockerClient();
-    $allContainerNames = fv3_read_container_names($dockerClient)['names'];
+    $ctNames = fv3_read_container_names($dockerClient);
+    // An empty/partial container list must not 200 an empty map — the client would trust it
+    // and skip its explicit-only fallback. Fail closed like the label read below.
+    if (!$ctNames['complete']) {
+        http_response_code(503);
+        echo json_encode(['error' => 'container list read unavailable or incomplete']);
+        exit;
+    }
+    $allContainerNames = $ctNames['names'];
     $ctLabels = fv3_read_container_labels($dockerClient, $allContainerNames);
     // Fail closed — the client keeps its explicit-only fallback rather than render half a map
     if ($ctLabels === null) {
