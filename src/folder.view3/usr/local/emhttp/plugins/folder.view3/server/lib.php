@@ -460,18 +460,30 @@
     function fv3_read_container_labels(DockerClient $dockerClient, array $allContainerNames): ?array {
         $ctLabels = [];
         $rawCts = $dockerClient->getDockerJSON("/containers/json?all=1");
-        if (!is_array($rawCts) || count($rawCts) < count($allContainerNames)) {
-            fv3_debug_log("fv3_read_container_labels: read unavailable or incomplete");
+        if (!is_array($rawCts)) {
+            fv3_debug_log("fv3_read_container_labels: read unavailable");
             return null;
         }
+        $answered = [];
         foreach ($rawCts as $rc) {
-            $rcName = is_array($rc) ? ltrim($rc['Names'][0] ?? '', '/') : '';
-            if ($rcName === '') {
+            $rcRaw = is_array($rc) ? ($rc['Names'][0] ?? '') : '';
+            // is_string first: a nested array here would fatal ltrim() on PHP 8
+            if (!is_string($rcRaw) || ltrim($rcRaw, '/') === '') {
                 fv3_debug_log("fv3_read_container_labels: unnamed container in read");
                 return null;
             }
+            $rcName = ltrim($rcRaw, '/');
+            $answered[$rcName] = true;
             $rcLabel = $rc['Labels']['folder.view3'] ?? '';
             if (is_string($rcLabel) && $rcLabel !== '') { $ctLabels[$rcName] = $rcLabel; }
+        }
+        // Identity, not cardinality: a same-size response (concurrent rename between the two
+        // Docker reads) would leave a container with no label answer and place it as unassigned.
+        foreach ($allContainerNames as $n) {
+            if (!isset($answered[$n])) {
+                fv3_debug_log("fv3_read_container_labels: '$n' missing from label read");
+                return null;
+            }
         }
         return $ctLabels;
     }
