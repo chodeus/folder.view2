@@ -1313,8 +1313,11 @@
             if ($key === 'docker' || $key === 'vm') {
                 $clean = [];
                 foreach ($data as $fid => $folder) {
-                    if (is_string($fid) && preg_match('#^[A-Za-z0-9]+$#D', $fid) && is_array($folder)) {
-                        $clean[$fid] = $folder;
+                    // (string) not is_string: json_decode gives an all-digit id an int key, which
+                    // the old check dropped — silently discarding that folder and reporting success
+                    $sid = (string)$fid;
+                    if (preg_match('#^[A-Za-z0-9]+$#D', $sid) && is_array($folder)) {
+                        $clean[$sid] = $folder;
                     }
                 }
                 // Imported bundles (and folder.view2 exports) can hold one container in two
