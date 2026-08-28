@@ -711,6 +711,9 @@
     // intact (the folder just saved wins); elsewhere ties resolve first-wins in key order.
     function fv3_dedupe_explicit_members(array $folders, ?string $winnerId = null): array {
         $claimed = [];
+        // PHP stores an all-digit id as an int key, so compare canonical strings below — on ===
+        // the winner would fail to match its own id and be stripped of the members claimed here
+        $winnerKey = $winnerId === null ? null : (string)$winnerId;
         $winnerMembers = $winnerId !== null ? ($folders[$winnerId]['containers'] ?? null) : null;
         if (is_array($winnerMembers)) {
             foreach ($winnerMembers as $ct) {
@@ -718,7 +721,7 @@
             }
         }
         foreach ($folders as $fid => $folder) {
-            if ($fid === $winnerId || !is_array($folder['containers'] ?? null)) { continue; }
+            if (($winnerKey !== null && (string)$fid === $winnerKey) || !is_array($folder['containers'] ?? null)) { continue; }
             $kept = [];
             foreach ($folder['containers'] as $ct) {
                 if (is_string($ct)) {
