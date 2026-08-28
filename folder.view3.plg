@@ -5,9 +5,9 @@
 <!ENTITY github "&author;/&name;">
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.08.28.2">
-<!ENTITY md5 "576e8375f18fee8d6396f02f56d849c9">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
+<!ENTITY version "2026.08.28">
+<!ENTITY md5 "8c16fcd81c312f8d6231c167dc398433">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
@@ -16,19 +16,12 @@
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
 
-###2026.08.28.2
-- A container explicitly added to a folder now stays there even if a `folder.view3` Docker label points it at a different folder — the folder you chose wins, on every tab and in the autostart order
-- The folder editor marks containers that carry a label claim, and no longer shows a container as locked to this folder when another folder explicitly owns it
-- The Autostart tab's Folder column now shows the folder a container actually renders in, including containers matched by a label or a folder regex
-- A container can no longer end up explicitly listed in two folders after an import or a hand-edited config, which previously let each screen pick a different owner
-- Folders whose id is all digits no longer lose their containers when saved, and are no longer dropped from an imported backup
-
-###2026.08.28.1
-- Folder and container order now survives an uninstall/reinstall: every drag saves an order snapshot into the plugin config, and the plugin restores folder positions from it after a reinstall (backups/exports carry it too)
-- Corrupt config files now fail safe everywhere: saving or deleting a folder, changing settings, or exporting a backup with a damaged config file aborts with an error instead of silently wiping folders or settings
-
-###2026.08.27.1
-- Uninstalling now also removes the plugin's leftover entries from the Docker/VM sort-order preferences, including entries left behind by folder.view and folder.view2
+###2026.08.28
+- Containers assigned by a `folder.view3` Docker label (including Compose services) no longer override a folder you picked explicitly, and can't end up in two folders at once
+- The folder editor and Autostart tab now show which folder a container really belongs to, including label and regex matches
+- Folder and container order now survives an uninstall/reinstall
+- Corrupt config files now fail safe instead of silently wiping folders or settings
+- Uninstall now also clears leftover Docker/VM sort-order entries, including ones left by folder.view and folder.view2
 
 ###2026.08.14
 - Uninstalling now removes the plugin cleanly after previous version improvements
@@ -665,7 +658,7 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
 
     <!-- New source file -->
     <FILE Name="/boot/config/plugins/&name;/&pkgname;.txz" Run="upgradepkg --install-new --reinstall">
-        <URL>https://raw.githubusercontent.com/&github;/beta/archive/&pkgname;.txz</URL>
+        <URL>https://raw.githubusercontent.com/&github;/main/archive/&pkgname;.txz</URL>
         <MD5>&md5;</MD5>
     </FILE>
 
