@@ -277,5 +277,6 @@
     "autostart-not-started": "Bez autostartu",
     "autostart-col-container": "Kontener",
     "autostart-col-folder": "Folder",
-    "autostart-col-wait": "Oczekiwanie (s)"
+    "autostart-col-wait": "Oczekiwanie (s)",
+    "label-claim-tooltip": "Zajęty przez etykietę folder.view3 — jawne przypisanie do folderu ma pierwszeństwo"
 }

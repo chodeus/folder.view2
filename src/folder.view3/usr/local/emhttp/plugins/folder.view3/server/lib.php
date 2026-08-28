@@ -30,6 +30,37 @@
         return is_array($data) ? $data : [];
     }
 
+    // Like fv3_read_json but keeps the tri-state: [] = file absent (a legitimate fresh
+    // state), null = file EXISTS but is unreadable or malformed. Use before any write
+    // that would persist "empty" — corrupt-as-empty must fail closed, never fall through.
+    function fv3_read_json_strict(string $path): ?array {
+        if (!file_exists($path)) return [];
+        $raw = @file_get_contents($path);
+        if ($raw === false) return null;
+        if (trim($raw) === '') return [];
+        $data = json_decode($raw, true);
+        return is_array($data) ? $data : null;
+    }
+
+    // Shared guard for the flock'd settings read-modify-write: a corrupt (non-empty,
+    // undecodable) settings.json aborts the request instead of resetting every other
+    // setting on the next save.
+    function fv3_decode_settings_or_abort($fp, $raw): array {
+        // A failed stream read (false) is as unreadable as corrupt JSON — never treat
+        // either as an empty file, or the next save resets every other setting.
+        if (is_string($raw) && trim($raw) === '') return [];
+        $data = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($data)) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'settings.json is unreadable — refusing to save so other settings are not reset']);
+            exit;
+        }
+        return $data;
+    }
+
     function fv3_debug_log($message) {
         if (FV3_DEBUG_MODE) {
             global $fv3_debug_log_file;
@@ -46,8 +77,10 @@
         @file_put_contents($fv3_debug_log_file, "--- FolderView3 lib.php readInfo Start ---\n");
     }
 
-    function fv3_validate_type(string $type): string {
-        if (!in_array($type, ['docker', 'vm'], true)) {
+    function fv3_validate_type($type): string {
+        // Untyped on purpose: a crafted type[]=x request reaches every endpoint as an
+        // array, and a string-typed parameter would fatal (TypeError) instead of 400ing.
+        if (!is_string($type) || !in_array($type, ['docker', 'vm'], true)) {
             http_response_code(400);
             exit;
         }
@@ -173,8 +206,127 @@
         elseif($type == 'vm') { $prefsFilePath = "$userPrefsDir/dynamix.vm.manager/userprefs.cfg"; }
         else { return '[]'; }
         if(!file_exists($prefsFilePath)) { return '[]'; }
+        // Deliberate GET side-effect (self-heal on the page-load read, mirroring the
+        // organizer mirror + rename-backfill pattern): content derives only from
+        // server-side state, is idempotent, and inserts rather than removes — a
+        // cross-site-triggered GET can only cause the same heal the next page load would.
+        fv3_heal_user_prefs($type, $prefsFilePath);
         $parsedIni = @parse_ini_file($prefsFilePath);
         return json_encode(array_values($parsedIni ?: []));
+    }
+
+    function fv3_order_snapshot_file(string $type): string {
+        global $configDir;
+        return "$configDir/order-$type.json";
+    }
+
+    // Returns the cleaned list, or null when any non-empty entry breaks the snapshot
+    // rules. Empty entries are delimiter artifacts (every stock names string ends ';')
+    // and are dropped, not treated as invalid. The rules exist because a violating
+    // entry could corrupt an ini line when healed back into userprefs.cfg.
+    function fv3_sanitize_order_entries(array $entries): ?array {
+        $clean = [];
+        foreach ($entries as $e) {
+            if (!is_string($e)) return null;
+            $e = trim($e);
+            if ($e === '') continue;
+            if (strlen($e) > 256 || strpos($e, '"') !== false || preg_match('/[\x00-\x1f\x7f]/', $e)) return null;
+            $clean[] = $e;
+        }
+        if (count($clean) > 4096) return null;
+        return $clean;
+    }
+
+    function saveOrderSnapshot(string $type, array $entries): bool {
+        $clean = fv3_sanitize_order_entries($entries);
+        if ($clean === null || empty($clean)) return false;
+        return fv3_atomic_write(fv3_order_snapshot_file($type), json_encode(['fv3_order_version' => 1, 'entries' => $clean], JSON_PRETTY_PRINT));
+    }
+
+    // Snapshot state for export, keeping the tri-state importAll() relies on:
+    // absent file -> [] (present-empty: source authoritatively has no snapshot, import
+    // clears the destination); unreadable/malformed -> null (omit the bundle key, import
+    // leaves the destination untouched); valid -> the wrapped snapshot.
+    // A snapshot wrapper saveOrderSnapshot could actually have written: version 1 and a
+    // non-empty entries list that passes sanitization unchanged. Returns the entries or
+    // null. Shared by export (file contents) and import (bundle contents) so both sides
+    // apply identical validation — anything else is corrupt/tampered and must be ignored,
+    // never treated as empty (that would clear a valid destination snapshot on import).
+    function fv3_validate_order_snapshot(array $data): ?array {
+        if (($data['fv3_order_version'] ?? null) !== 1
+            || !isset($data['entries']) || !is_array($data['entries'])) return null;
+        $clean = fv3_sanitize_order_entries($data['entries']);
+        if ($clean === null || empty($clean) || $clean !== array_values($data['entries'])) return null;
+        return $clean;
+    }
+
+    function fv3_export_order_snapshot(string $type): ?array {
+        $path = fv3_order_snapshot_file($type);
+        if (!file_exists($path)) return [];
+        $raw = @file_get_contents($path);
+        $data = ($raw !== false) ? json_decode($raw, true) : null;
+        if (!is_array($data) || fv3_validate_order_snapshot($data) === null) return null;
+        return $data;
+    }
+
+    // Re-insert folder rows into the stock sort prefs from FV3's own order snapshot.
+    // Fires when prefs has entries but at least one live folder is unpositioned —
+    // the post-reinstall state, or a folder whose entry went missing. Insert-only —
+    // existing prefs entries are never reordered or removed, so container order is
+    // preserved, and already-positioned folders are kept in place and used as anchors.
+    function fv3_heal_user_prefs(string $type, string $prefsFilePath): void {
+        global $configDir;
+        $raw = @file_get_contents($prefsFilePath);
+        if (!is_string($raw) || $raw === '') return;
+        $parsed = @parse_ini_string($raw);
+        if (!is_array($parsed) || empty($parsed)) return;
+        uksort($parsed, function($a, $b) { return (int)$a <=> (int)$b; });
+        $current = array_values($parsed);
+
+        $config = fv3_read_json("$configDir/$type.json");
+        if (empty($config)) return;
+        // Prefs and the snapshot store folder rows as 'folder-<id>' placeholders
+        // (the hidden appname the stock reorder serializes); config keys are raw ids.
+        $placeholders = [];
+        foreach (array_keys($config) as $fid) { $placeholders['folder-' . $fid] = true; }
+        if (empty(array_diff(array_keys($placeholders), $current))) return;
+
+        $snap = fv3_read_json(fv3_order_snapshot_file($type));
+        $saved = $snap['entries'] ?? null;
+        if (!is_array($saved)) return;
+
+        $currentSet = array_flip($current);
+        // Each unpositioned live folder placeholder maps to the first later snapshot entry still present in prefs (null = append)
+        $insertBefore = [];
+        $pending = [];
+        foreach ($saved as $entry) {
+            if (!is_string($entry)) continue;
+            if (isset($placeholders[$entry]) && !isset($currentSet[$entry])) { $pending[] = $entry; continue; }
+            if (isset($currentSet[$entry])) {
+                foreach ($pending as $fid) { $insertBefore[$fid] = $entry; }
+                $pending = [];
+            }
+        }
+        foreach ($pending as $fid) { $insertBefore[$fid] = null; }
+        if (empty($insertBefore)) return;
+
+        $out = [];
+        foreach ($current as $name) {
+            foreach ($insertBefore as $fid => $succ) {
+                if ($succ === $name) { $out[] = $fid; unset($insertBefore[$fid]); }
+            }
+            $out[] = $name;
+        }
+        foreach (array_keys($insertBefore) as $fid) { $out[] = $fid; }
+
+        $lines = [];
+        foreach (array_values($out) as $i => $name) { $lines[] = $i . '="' . $name . '"'; }
+        // Stock UserPrefs writes are lockless, so re-check the source right before
+        // replacing — a concurrent reorder mid-compute aborts the heal (next load retries).
+        if (@file_get_contents($prefsFilePath) !== $raw) return;
+        if (fv3_atomic_write($prefsFilePath, implode("\n", $lines) . "\n")) {
+            fv3_debug_log("fv3_heal_user_prefs($type): re-inserted " . (count($out) - count($current)) . " folder position(s)");
+        }
     }
 
     function fv3_autostart_file(): string {
@@ -184,7 +336,10 @@
 
     function readAutostartConfig(): array {
         global $configDir;
-        $cfg = fv3_read_json("$configDir/autostart.json");
+        $cfg = fv3_read_json_strict("$configDir/autostart.json");
+        // Corrupt config fails closed to 'off' (pure stock behaviour, no autostart writes)
+        // rather than silently flipping a custom/off user to folder mode.
+        if ($cfg === null) return ['mode' => 'off', 'sequence' => []];
         $mode = $cfg['mode'] ?? 'folder';
         if (!in_array($mode, ['folder', 'custom', 'off'], true)) $mode = 'folder';
         $sequence = [];
@@ -282,71 +437,77 @@
         fv3_debug_log("fv3_apply_custom_autostart: wrote " . count($newAutoStart) . " entries (" . count($sequence) . " sequenced)");
     }
 
-    function syncContainerOrder(string $type): void {
-        // Rewrites the autostart file to match what FV3 renders on screen — top-to-bottom,
-        // folder members left-to-right in their editor-chosen order. Render order itself is
-        // owned by Unraid (userprefs.cfg if user drag-reordered, alphabetical otherwise);
-        // FV3 no longer auto-writes userprefs.cfg from this function.
-        global $configDir;
-        fv3_debug_log("syncContainerOrder called for type: $type");
-
-        if ($type !== 'docker') { return; }
-
-        $autostartMode = readAutostartConfig()['mode'];
-        // 'off' = FV3 never writes the autostart file — pure stock Unraid behaviour
-        if ($autostartMode === 'off') { fv3_debug_log("syncContainerOrder: autostart mode off, skipping"); return; }
-
-        $prefsFile = "/boot/config/plugins/dockerMan/userprefs.cfg";
-        $foldersFile = "$configDir/docker.json";
-        $folders = fv3_read_json($foldersFile);
-
-        $dockerClient = new DockerClient();
+    // Container names from getDockerContainers(). 'complete' is false when the read is empty
+    // or any entry is unnamed — a degraded list must not drive autostart pruning (#214).
+    function fv3_read_container_names(DockerClient $dockerClient): array {
         $cts = $dockerClient->getDockerContainers();
         if (!is_array($cts)) { $cts = []; }
-        $ctNamesRaw = array_map(function($c) { return is_array($c) ? ($c['Name'] ?? '') : ''; }, $cts);
-        $allContainerNames = array_values(array_filter($ctNamesRaw, function($n) { return $n !== ''; }));
-        // Prune below only on a complete, fully-named container list — a degraded Docker read must not wipe autostart entries (#214)
-        $ctListComplete = !empty($ctNamesRaw) && !in_array('', $ctNamesRaw, true);
-
-        // 'custom' = the Autostart tab's saved sequence overrides folder-derived order entirely
-        if ($autostartMode === 'custom') {
-            fv3_apply_custom_autostart($allContainerNames, $ctListComplete);
-            return;
+        $names = [];
+        $complete = !empty($cts);
+        foreach ($cts as $c) {
+            $n = is_array($c) ? ($c['Name'] ?? '') : '';
+            // Drop non-strings too — one would reach preg_match() and fatal on PHP 8
+            if (!is_string($n) || $n === '') { $complete = false; continue; }
+            $names[] = $n;
         }
+        return ['names' => $names, 'complete' => $complete];
+    }
 
-        // `folder.view3: <name>` label claims, keyed by container name. getDockerContainers()
-        // carries no Labels, so read them from the same raw endpoint readInfo() uses.
+    // `folder.view3: <name>` label claims keyed by container name — getDockerContainers()
+    // carries no Labels, so read the same raw endpoint readInfo() uses. Returns null on a
+    // failed/partial/unnamed read so callers fail closed rather than treat label-assigned
+    // containers as unassigned (#214 class).
+    function fv3_read_container_labels(DockerClient $dockerClient, array $allContainerNames): ?array {
         $ctLabels = [];
         $rawCts = $dockerClient->getDockerJSON("/containers/json?all=1");
-        // Fail closed. A failed or partial read yields no label claims, and the order below would
-        // then write label-assigned containers back out as unassigned — the same hazard $ctListComplete
-        // guards against above, so abort rather than fall through to the permissive path.
-        if (!is_array($rawCts) || count($rawCts) < count($allContainerNames)) {
-            fv3_debug_log("syncContainerOrder: label read unavailable or incomplete, aborting before write");
-            return;
+        if (!is_array($rawCts)) {
+            fv3_debug_log("fv3_read_container_labels: read unavailable");
+            return null;
         }
+        $answered = [];
         foreach ($rawCts as $rc) {
-            $rcName = is_array($rc) ? ltrim($rc['Names'][0] ?? '', '/') : '';
-            if ($rcName === '') {
-                fv3_debug_log("syncContainerOrder: unnamed container in label read, aborting before write");
-                return;
+            $rcRaw = is_array($rc) ? ($rc['Names'][0] ?? '') : '';
+            // is_string first: a nested array here would fatal ltrim() on PHP 8
+            if (!is_string($rcRaw) || ltrim($rcRaw, '/') === '') {
+                fv3_debug_log("fv3_read_container_labels: unnamed container in read");
+                return null;
             }
+            $rcName = ltrim($rcRaw, '/');
+            $answered[$rcName] = true;
             $rcLabel = $rc['Labels']['folder.view3'] ?? '';
             if (is_string($rcLabel) && $rcLabel !== '') { $ctLabels[$rcName] = $rcLabel; }
+        }
+        // Identity, not cardinality: a same-size response (concurrent rename between the two
+        // Docker reads) would leave a container with no label answer and place it as unassigned.
+        foreach ($allContainerNames as $n) {
+            if (!isset($answered[$n])) {
+                fv3_debug_log("fv3_read_container_labels: '$n' missing from label read");
+                return null;
+            }
+        }
+        return $ctLabels;
+    }
+
+    // Effective membership — explicit > label > regex (issues #46/#55). Single source of
+    // truth shared by syncContainerOrder and read_membership.php (issue #61). Returns null
+    // on a corrupt persisted shape so callers fail closed instead of fataling mid-compute.
+    function fv3_compute_folder_membership(array $folders, array $allContainerNames, array $ctLabels): ?array {
+        foreach ($folders as $folder) {
+            if (!is_array($folder) || !is_array($folder['containers'] ?? [])
+                || (isset($folder['name']) && !is_string($folder['name']))) { return null; }
         }
         $folderNameSet = [];
         foreach ($folders as $folder) {
             if (isset($folder['name'])) { $folderNameSet[$folder['name']] = true; }
         }
-
         $folderContainers = [];
         $folderNames = [];
         $assignedContainers = [];
-        // Explicit members and label claims of any folder beat regex matches elsewhere (issue #46)
-        $explicitAssigned = [];
+        $explicitMembers = [];
         foreach ($folders as $folder) {
-            $explicitAssigned = array_merge($explicitAssigned, $folder['containers'] ?? []);
+            $explicitMembers = array_merge($explicitMembers, $folder['containers'] ?? []);
         }
+        $explicitAssigned = $explicitMembers;
         foreach ($ctLabels as $ctName => $ctLabel) {
             if (isset($folderNameSet[$ctLabel])) { $explicitAssigned[] = $ctName; }
         }
@@ -363,8 +524,9 @@
                     }
                 }
             }
+            // Explicit containers[] entries anywhere win over a label claim (issue #55)
             foreach ($ctLabels as $ctName => $ctLabel) {
-                if ($ctLabel === ($folder['name'] ?? null) && !in_array($ctName, $members)) {
+                if ($ctLabel === ($folder['name'] ?? null) && !in_array($ctName, $members) && !in_array($ctName, $explicitMembers)) {
                     $members[] = $ctName;
                 }
             }
@@ -375,6 +537,68 @@
             $folderNames["folder-$folderId"] = $folder['name'] ?? "folder-$folderId";
             $assignedContainers = array_merge($assignedContainers, $members);
         }
+        return ['containers' => $folderContainers, 'names' => $folderNames, 'assigned' => $assignedContainers];
+    }
+
+    function syncContainerOrder(string $type): void {
+        // Rewrites the autostart file to match what FV3 renders on screen — top-to-bottom,
+        // folder members left-to-right in their editor-chosen order. Render order itself is
+        // owned by Unraid (userprefs.cfg if user drag-reordered, alphabetical otherwise);
+        // FV3 no longer auto-writes userprefs.cfg from this function.
+        global $configDir;
+        fv3_debug_log("syncContainerOrder called for type: $type");
+
+        if ($type !== 'docker') { return; }
+
+        $autostartMode = readAutostartConfig()['mode'];
+        // 'off' = FV3 never writes the autostart file — pure stock Unraid behaviour
+        if ($autostartMode === 'off') { fv3_debug_log("syncContainerOrder: autostart mode off, skipping"); return; }
+
+        $prefsFile = "/boot/config/plugins/dockerMan/userprefs.cfg";
+        $foldersFile = "$configDir/docker.json";
+        $folders = fv3_read_json_strict($foldersFile);
+        if ($folders === null) {
+            // Corrupt folder config must not rewrite the autostart file as if no folders exist
+            fv3_debug_log("syncContainerOrder: $foldersFile unreadable, aborting before write");
+            return;
+        }
+
+        $dockerClient = new DockerClient();
+        $ctNames = fv3_read_container_names($dockerClient);
+        $allContainerNames = $ctNames['names'];
+        // Prune below only on a complete, fully-named container list — a degraded Docker read must not wipe autostart entries (#214)
+        $ctListComplete = $ctNames['complete'];
+
+        // 'custom' = the Autostart tab's saved sequence overrides folder-derived order entirely
+        if ($autostartMode === 'custom') {
+            fv3_apply_custom_autostart($allContainerNames, $ctListComplete);
+            return;
+        }
+
+        // Folder-derived order needs the WHOLE list: containers missing from a partial read are
+        // skipped by the order walk and land appended at the end, silently reordering the file.
+        // Custom mode above is exempt — its order comes from the saved sequence, not this list.
+        if (!$ctListComplete) {
+            fv3_debug_log("syncContainerOrder: container list empty or incomplete, aborting before write");
+            return;
+        }
+
+        $ctLabels = fv3_read_container_labels($dockerClient, $allContainerNames);
+        // Fail closed: without label claims the order below would write label-assigned
+        // containers back out as unassigned — the same hazard $ctListComplete guards above.
+        if ($ctLabels === null) {
+            fv3_debug_log("syncContainerOrder: label read unavailable or incomplete, aborting before write");
+            return;
+        }
+        $membership = fv3_compute_folder_membership($folders, $allContainerNames, $ctLabels);
+        // Corrupt persisted shapes fail closed before the autostart write, not fatal mid-sync
+        if ($membership === null) {
+            fv3_debug_log("syncContainerOrder: folder entry with invalid containers shape, aborting before write");
+            return;
+        }
+        $folderContainers = $membership['containers'];
+        $folderNames = $membership['names'];
+        $assignedContainers = $membership['assigned'];
 
         // Build $currentOrder. Source:
         //   - userprefs.cfg if it exists (user has drag-reordered at some point)
@@ -483,6 +707,34 @@
         }
     }
 
+    // A container may be explicit in at most one folder (issue #62). $winnerId's list survives
+    // intact (the folder just saved wins); elsewhere ties resolve first-wins in key order.
+    function fv3_dedupe_explicit_members(array $folders, ?string $winnerId = null): array {
+        $claimed = [];
+        // PHP stores an all-digit id as an int key, so compare canonical strings below — on ===
+        // the winner would fail to match its own id and be stripped of the members claimed here
+        $winnerKey = $winnerId === null ? null : (string)$winnerId;
+        $winnerMembers = $winnerId !== null ? ($folders[$winnerId]['containers'] ?? null) : null;
+        if (is_array($winnerMembers)) {
+            foreach ($winnerMembers as $ct) {
+                if (is_string($ct)) { $claimed[$ct] = true; }
+            }
+        }
+        foreach ($folders as $fid => $folder) {
+            if (($winnerKey !== null && (string)$fid === $winnerKey) || !is_array($folder['containers'] ?? null)) { continue; }
+            $kept = [];
+            foreach ($folder['containers'] as $ct) {
+                if (is_string($ct)) {
+                    if (isset($claimed[$ct])) { continue; }
+                    $claimed[$ct] = true;
+                }
+                $kept[] = $ct;
+            }
+            $folders[$fid]['containers'] = $kept;
+        }
+        return $folders;
+    }
+
     function updateFolder(string $type, string $content, string $id = '') : void {
         global $configDir;
         if(!file_exists("$configDir/$type.json")) { createFile($type); if (empty($id)) $id = generateId(); }
@@ -500,8 +752,16 @@
             echo json_encode(['error' => "The folder name 'root' is reserved by Unraid's Docker organizer"]);
             exit;
         }
-        $fileData = fv3_read_json("$configDir/$type.json");
+        $fileData = fv3_read_json_strict("$configDir/$type.json");
+        if ($fileData === null) {
+            // Corrupt config must fail closed — merging onto empty would wipe every other folder
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => "$type.json is unreadable — refusing to save so existing folders are not wiped"]);
+            exit;
+        }
         $fileData[$id] = $decoded;
+        $fileData = fv3_dedupe_explicit_members($fileData, $id);
         $path = "$configDir/$type.json";
         fv3_atomic_write($path, json_encode($fileData));
     }
@@ -511,7 +771,15 @@
         if(!file_exists("$configDir/$type.json")) { return; }
         $updates = json_decode($data, true);
         if (json_last_error() !== JSON_ERROR_NONE || !is_array($updates)) { http_response_code(400); exit; }
-        $fileData = fv3_read_json("$configDir/$type.json");
+        // Strict, like updateFolder: the dedupe below rewrites every folder, so a
+        // corrupt-as-empty read must abort rather than persist a pruned file
+        $fileData = fv3_read_json_strict("$configDir/$type.json");
+        if ($fileData === null) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => "$type.json is unreadable — refusing to save so existing folders are not wiped"]);
+            exit;
+        }
         $changed = false;
         foreach ($updates as $folderId => $patch) {
             if (!preg_match('/^[A-Za-z0-9+\/=]+$/', $folderId)) continue;
@@ -534,6 +802,8 @@
             }
         }
         if ($changed) {
+            // A rename can land on a name already explicit elsewhere — re-assert single ownership (issue #62)
+            $fileData = fv3_dedupe_explicit_members($fileData);
             $path = "$configDir/$type.json";
             fv3_atomic_write($path, json_encode($fileData));
         }
@@ -542,7 +812,14 @@
     function deleteFolder(string $type, string $id) : void {
         global $configDir;
         if(!file_exists("$configDir/$type.json")) { createFile($type); return; }
-        $fileData = fv3_read_json("$configDir/$type.json");
+        $fileData = fv3_read_json_strict("$configDir/$type.json");
+        if ($fileData === null) {
+            // Corrupt config must fail closed — writing the fallback would wipe every folder
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => "$type.json is unreadable — refusing to delete so the folder config is not wiped"]);
+            exit;
+        }
         unset($fileData[$id]);
         $path = "$configDir/$type.json";
         fv3_atomic_write($path, json_encode($fileData));
@@ -607,7 +884,7 @@
         if (!$fp) { http_response_code(500); exit; }
         flock($fp, LOCK_EX);
         $raw = stream_get_contents($fp);
-        $data = json_decode($raw, true) ?: [];
+        $data = fv3_decode_settings_or_abort($fp, $raw);
         $data[$key] = $value;
         ftruncate($fp, 0);
         rewind($fp);
@@ -659,7 +936,7 @@
         if (!$fp) { http_response_code(500); exit; }
         flock($fp, LOCK_EX);
         $raw = stream_get_contents($fp);
-        $data = json_decode($raw, true) ?: [];
+        $data = fv3_decode_settings_or_abort($fp, $raw);
         foreach ($settings as $key => $value) {
             $key = (string)$key;
             $value = (string)$value;
@@ -699,7 +976,7 @@
         if (!$fp) { http_response_code(500); exit; }
         flock($fp, LOCK_EX);
         $raw = stream_get_contents($fp);
-        $data = json_decode($raw, true) ?: [];
+        $data = fv3_decode_settings_or_abort($fp, $raw);
         if ($value === '') { unset($data[$key]); } else { $data[$key] = $value; }
         ftruncate($fp, 0);
         rewind($fp);
@@ -932,18 +1209,31 @@
     function exportAll() : array {
         global $configDir;
         $unraidIni = @parse_ini_file('/etc/unraid-version');
+        // Strict reads: a config file that exists but can't be parsed aborts the export —
+        // a backup silently exporting corrupt-as-empty would wipe good data when imported.
+        $sections = [];
+        foreach (['docker' => 'docker.json', 'vm' => 'vm.json', 'settings' => 'settings.json',
+                  'autostart' => 'autostart.json', 'css_config' => 'css-config.json'] as $bk => $bf) {
+            $sec = fv3_read_json_strict("$configDir/$bf");
+            if ($sec === null) return ['error' => "$bf is unreadable or corrupt — export aborted so an incomplete backup can't overwrite good data on import"];
+            $sections[$bk] = $sec;
+        }
         $bundle = [
             'fv3_export_version' => 1,
             'plugin_version' => trim(@file_get_contents("$configDir/version") ?: ''),
             'unraid_version' => is_array($unraidIni) && isset($unraidIni['version']) ? $unraidIni['version'] : '',
             'exported' => date('c'),
-            'docker' => fv3_read_json("$configDir/docker.json"),
-            'vm' => fv3_read_json("$configDir/vm.json"),
-            'settings' => fv3_read_json("$configDir/settings.json"),
-            'autostart' => fv3_read_json("$configDir/autostart.json"),
-            'css_config' => fv3_read_json("$configDir/css-config.json"),
+            'docker' => $sections['docker'],
+            'vm' => $sections['vm'],
+            'settings' => $sections['settings'],
+            'autostart' => $sections['autostart'],
+            'css_config' => $sections['css_config'],
             'custom_styles' => []
         ];
+        foreach (['docker', 'vm'] as $ot) {
+            $snapExport = fv3_export_order_snapshot($ot);
+            if ($snapExport !== null) { $bundle["order_$ot"] = $snapExport; }
+        }
         $stylesDir = "$configDir/styles";
         $cssSize = 0;
         if (is_dir($stylesDir)) {
@@ -976,19 +1266,63 @@
         if (!$bundle || !isset($bundle['fv3_export_version'])) return ['error' => 'Invalid FV3 export file'];
         $restored = [];
         if (!is_dir($configDir)) @mkdir($configDir, 0770, true);
-        foreach (['docker', 'vm', 'settings', 'autostart', 'css_config'] as $key) {
+        // Confinement gate for EVERY write below, not just the snapshot branch: refuse the
+        // whole import if the config dir path resolves through a symlink or doesn't exist.
+        if (realpath($configDir) !== $configDir) {
+            return ['error' => 'Plugin config directory failed its confinement check — import aborted'];
+        }
+        foreach (['docker', 'vm', 'settings', 'autostart', 'css_config', 'order_docker', 'order_vm'] as $key) {
             if (!isset($bundle[$key]) || !is_array($bundle[$key])) continue;
             $data = $bundle[$key];
-            // Folder maps are id => folder — allowlist the id keys (same charset as update.php) so a crafted
-            // backup can't plant a folder id that breaks out of the class/onclick attributes at render (XSS).
+            if ($key === 'order_docker' || $key === 'order_vm') {
+                $t = $key === 'order_docker' ? 'docker' : 'vm';
+                $snapFile = fv3_order_snapshot_file($t);
+                if ($data === []) {
+                    // Exactly [] is how export represents "source has no snapshot" — clear any
+                    // pre-existing destination snapshot so it can't position the freshly
+                    // imported folders. A bundle without the key leaves the destination alone.
+                    if (file_exists($snapFile)) {
+                        if (!@unlink($snapFile)) {
+                            // A stale snapshot the bundle said to remove must not survive a "success"
+                            return ['error' => "Could not clear order-$t.json — remove it manually (earlier sections were imported)"];
+                        }
+                        $restored[] = "order-$t.json (cleared)";
+                    }
+                    continue;
+                }
+                // Same validation as export: a malformed wrapper is corrupt/tampered input and
+                // must not fall through to the clear branch or to a destructive restore.
+                $entries = fv3_validate_order_snapshot($data);
+                if ($entries === null) { continue; }
+                if (saveOrderSnapshot($t, $entries)) {
+                    $restored[] = "order-$t.json";
+                } else {
+                    // Validated entries can only fail on the atomic write itself; the source
+                    // provably had a different snapshot, so drop the stale destination copy
+                    // rather than let it position the imported folders (heal simply disables).
+                    if (file_exists($snapFile) && !@unlink($snapFile)) {
+                        return ['error' => "Could not update order-$t.json — remove it manually (earlier sections were imported)"];
+                    }
+                }
+                continue;
+            }
+            // Folder maps are id => folder — allowlist the id keys so a crafted backup can't
+            // plant a folder id that breaks out of class/onclick attributes at render (XSS).
+            // Alphanumeric ONLY: every generator (folder.view/2/3) strips +/= and never emits
+            // them, and an id containing +/= would break jQuery selectors at render time.
             if ($key === 'docker' || $key === 'vm') {
                 $clean = [];
                 foreach ($data as $fid => $folder) {
-                    if (is_string($fid) && preg_match('#^[A-Za-z0-9+/=]+$#D', $fid) && is_array($folder)) {
-                        $clean[$fid] = $folder;
+                    // (string) not is_string: json_decode gives an all-digit id an int key, which
+                    // the old check dropped — silently discarding that folder and reporting success
+                    $sid = (string)$fid;
+                    if (preg_match('#^[A-Za-z0-9]+$#D', $sid) && is_array($folder)) {
+                        $clean[$sid] = $folder;
                     }
                 }
-                $data = $clean;
+                // Imported bundles (and folder.view2 exports) can hold one container in two
+                // folders — first folder in bundle order keeps it (issue #62)
+                $data = fv3_dedupe_explicit_members($clean);
             }
             $filename = $key === 'css_config' ? 'css-config.json' : "$key.json";
             $path = "$configDir/$filename";

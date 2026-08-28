@@ -6,8 +6,8 @@
 <!ENTITY launch "Settings/FolderView3">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
-<!ENTITY version "2026.08.14">
-<!ENTITY md5 "26c6168e9da970e2a92d5ef69fc85d39">
+<!ENTITY version "2026.08.28">
+<!ENTITY md5 "8c16fcd81c312f8d6231c167dc398433">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
@@ -15,6 +15,13 @@
     <CHANGES>
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
+
+###2026.08.28
+- Containers assigned by a `folder.view3` Docker label (including Compose services) no longer override a folder you picked explicitly, and can't end up in two folders at once
+- The folder editor and Autostart tab now show which folder a container really belongs to, including label and regex matches
+- Folder and container/VM order is now written into backups, so importing a backup restores your layout
+- Corrupt config files now fail safe instead of silently wiping folders or settings
+- Uninstall now also clears leftover Docker/VM sort-order entries, including ones left by folder.view and folder.view2
 
 ###2026.08.14
 - Uninstalling now removes the plugin cleanly after previous version improvements
@@ -719,6 +726,18 @@ After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache
             done
             rm -rf &plugdir;
             rm -rf /boot/config/plugins/&name;
+            # Folder rows persist phantom 'folder-ID' entries into the stock
+            # sort prefs via UserPrefs.php — strip them and renumber on the way out.
+            for f in /boot/config/plugins/dockerMan/userprefs.cfg /boot/config/plugins/dynamix.vm.manager/userprefs.cfg; do
+                [ -f "$f" ] || continue
+                # RT (gawk, guaranteed on Unraid) keeps each line terminator as-is,
+                # incl. a missing final newline.
+                if awk -F'"' 'BEGIN{RS="\r\n|\n|\r"; n=0} $0 ~ /^[0-9]+="[^"]*"$/ { v=$2; if (v ~ /^folder-[A-Za-z0-9]+$/) if (length(v) >= 20) if (v ~ /[A-Z]/) if (v ~ /[a-z]/) next; printf "%d=\"%s\"%s", n, v, RT; n++; next } { printf "%s%s", $0, RT }' "$f" > "$f.fv3clean"; then
+                    mv "$f.fv3clean" "$f"
+                else
+                    rm -f "$f.fv3clean"
+                fi
+            done
         </INLINE>
     </FILE>
 
