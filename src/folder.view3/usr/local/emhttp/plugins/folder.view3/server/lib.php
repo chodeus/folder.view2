@@ -707,6 +707,34 @@
         }
     }
 
+    // A container may be explicit in at most one folder (issue #62). $winnerId's list survives
+    // intact (the folder just saved wins); elsewhere ties resolve first-wins in key order.
+    function fv3_dedupe_explicit_members(array $folders, ?string $winnerId = null): array {
+        $claimed = [];
+        // PHP stores an all-digit id as an int key, so compare canonical strings below — on ===
+        // the winner would fail to match its own id and be stripped of the members claimed here
+        $winnerKey = $winnerId === null ? null : (string)$winnerId;
+        $winnerMembers = $winnerId !== null ? ($folders[$winnerId]['containers'] ?? null) : null;
+        if (is_array($winnerMembers)) {
+            foreach ($winnerMembers as $ct) {
+                if (is_string($ct)) { $claimed[$ct] = true; }
+            }
+        }
+        foreach ($folders as $fid => $folder) {
+            if (($winnerKey !== null && (string)$fid === $winnerKey) || !is_array($folder['containers'] ?? null)) { continue; }
+            $kept = [];
+            foreach ($folder['containers'] as $ct) {
+                if (is_string($ct)) {
+                    if (isset($claimed[$ct])) { continue; }
+                    $claimed[$ct] = true;
+                }
+                $kept[] = $ct;
+            }
+            $folders[$fid]['containers'] = $kept;
+        }
+        return $folders;
+    }
+
     function updateFolder(string $type, string $content, string $id = '') : void {
         global $configDir;
         if(!file_exists("$configDir/$type.json")) { createFile($type); if (empty($id)) $id = generateId(); }
@@ -733,6 +761,7 @@
             exit;
         }
         $fileData[$id] = $decoded;
+        $fileData = fv3_dedupe_explicit_members($fileData, $id);
         $path = "$configDir/$type.json";
         fv3_atomic_write($path, json_encode($fileData));
     }
@@ -742,7 +771,15 @@
         if(!file_exists("$configDir/$type.json")) { return; }
         $updates = json_decode($data, true);
         if (json_last_error() !== JSON_ERROR_NONE || !is_array($updates)) { http_response_code(400); exit; }
-        $fileData = fv3_read_json("$configDir/$type.json");
+        // Strict, like updateFolder: the dedupe below rewrites every folder, so a
+        // corrupt-as-empty read must abort rather than persist a pruned file
+        $fileData = fv3_read_json_strict("$configDir/$type.json");
+        if ($fileData === null) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => "$type.json is unreadable — refusing to save so existing folders are not wiped"]);
+            exit;
+        }
         $changed = false;
         foreach ($updates as $folderId => $patch) {
             if (!preg_match('/^[A-Za-z0-9+\/=]+$/', $folderId)) continue;
@@ -765,6 +802,8 @@
             }
         }
         if ($changed) {
+            // A rename can land on a name already explicit elsewhere — re-assert single ownership (issue #62)
+            $fileData = fv3_dedupe_explicit_members($fileData);
             $path = "$configDir/$type.json";
             fv3_atomic_write($path, json_encode($fileData));
         }
@@ -1274,11 +1313,16 @@
             if ($key === 'docker' || $key === 'vm') {
                 $clean = [];
                 foreach ($data as $fid => $folder) {
-                    if (is_string($fid) && preg_match('#^[A-Za-z0-9]+$#D', $fid) && is_array($folder)) {
-                        $clean[$fid] = $folder;
+                    // (string) not is_string: json_decode gives an all-digit id an int key, which
+                    // the old check dropped — silently discarding that folder and reporting success
+                    $sid = (string)$fid;
+                    if (preg_match('#^[A-Za-z0-9]+$#D', $sid) && is_array($folder)) {
+                        $clean[$sid] = $folder;
                     }
                 }
-                $data = $clean;
+                // Imported bundles (and folder.view2 exports) can hold one container in two
+                // folders — first folder in bundle order keeps it (issue #62)
+                $data = fv3_dedupe_explicit_members($clean);
             }
             $filename = $key === 'css_config' ? 'css-config.json' : "$key.json";
             $path = "$configDir/$filename";
