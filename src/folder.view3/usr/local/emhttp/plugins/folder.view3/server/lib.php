@@ -437,81 +437,72 @@
         fv3_debug_log("fv3_apply_custom_autostart: wrote " . count($newAutoStart) . " entries (" . count($sequence) . " sequenced)");
     }
 
-    function syncContainerOrder(string $type): void {
-        // Rewrites the autostart file to match what FV3 renders on screen — top-to-bottom,
-        // folder members left-to-right in their editor-chosen order. Render order itself is
-        // owned by Unraid (userprefs.cfg if user drag-reordered, alphabetical otherwise);
-        // FV3 no longer auto-writes userprefs.cfg from this function.
-        global $configDir;
-        fv3_debug_log("syncContainerOrder called for type: $type");
-
-        if ($type !== 'docker') { return; }
-
-        $autostartMode = readAutostartConfig()['mode'];
-        // 'off' = FV3 never writes the autostart file — pure stock Unraid behaviour
-        if ($autostartMode === 'off') { fv3_debug_log("syncContainerOrder: autostart mode off, skipping"); return; }
-
-        $prefsFile = "/boot/config/plugins/dockerMan/userprefs.cfg";
-        $foldersFile = "$configDir/docker.json";
-        $folders = fv3_read_json_strict($foldersFile);
-        if ($folders === null) {
-            // Corrupt folder config must not rewrite the autostart file as if no folders exist
-            fv3_debug_log("syncContainerOrder: $foldersFile unreadable, aborting before write");
-            return;
-        }
-
-        $dockerClient = new DockerClient();
+    // Container names from getDockerContainers(). 'complete' is false when the read is empty
+    // or any entry is unnamed — a degraded list must not drive autostart pruning (#214).
+    function fv3_read_container_names(DockerClient $dockerClient): array {
         $cts = $dockerClient->getDockerContainers();
         if (!is_array($cts)) { $cts = []; }
-        $ctNamesRaw = array_map(function($c) { return is_array($c) ? ($c['Name'] ?? '') : ''; }, $cts);
-        $allContainerNames = array_values(array_filter($ctNamesRaw, function($n) { return $n !== ''; }));
-        // Prune below only on a complete, fully-named container list — a degraded Docker read must not wipe autostart entries (#214)
-        $ctListComplete = !empty($ctNamesRaw) && !in_array('', $ctNamesRaw, true);
-
-        // 'custom' = the Autostart tab's saved sequence overrides folder-derived order entirely
-        if ($autostartMode === 'custom') {
-            fv3_apply_custom_autostart($allContainerNames, $ctListComplete);
-            return;
+        $names = [];
+        $complete = !empty($cts);
+        foreach ($cts as $c) {
+            $n = is_array($c) ? ($c['Name'] ?? '') : '';
+            // Drop non-strings too — one would reach preg_match() and fatal on PHP 8
+            if (!is_string($n) || $n === '') { $complete = false; continue; }
+            $names[] = $n;
         }
+        return ['names' => $names, 'complete' => $complete];
+    }
 
-        // `folder.view3: <name>` label claims, keyed by container name. getDockerContainers()
-        // carries no Labels, so read them from the same raw endpoint readInfo() uses.
+    // `folder.view3: <name>` label claims keyed by container name — getDockerContainers()
+    // carries no Labels, so read the same raw endpoint readInfo() uses. Returns null on a
+    // failed/partial/unnamed read so callers fail closed rather than treat label-assigned
+    // containers as unassigned (#214 class).
+    function fv3_read_container_labels(DockerClient $dockerClient, array $allContainerNames): ?array {
         $ctLabels = [];
         $rawCts = $dockerClient->getDockerJSON("/containers/json?all=1");
-        // Fail closed. A failed or partial read yields no label claims, and the order below would
-        // then write label-assigned containers back out as unassigned — the same hazard $ctListComplete
-        // guards against above, so abort rather than fall through to the permissive path.
-        if (!is_array($rawCts) || count($rawCts) < count($allContainerNames)) {
-            fv3_debug_log("syncContainerOrder: label read unavailable or incomplete, aborting before write");
-            return;
+        if (!is_array($rawCts)) {
+            fv3_debug_log("fv3_read_container_labels: read unavailable");
+            return null;
         }
+        $answered = [];
         foreach ($rawCts as $rc) {
-            $rcName = is_array($rc) ? ltrim($rc['Names'][0] ?? '', '/') : '';
-            if ($rcName === '') {
-                fv3_debug_log("syncContainerOrder: unnamed container in label read, aborting before write");
-                return;
+            $rcRaw = is_array($rc) ? ($rc['Names'][0] ?? '') : '';
+            // is_string first: a nested array here would fatal ltrim() on PHP 8
+            if (!is_string($rcRaw) || ltrim($rcRaw, '/') === '') {
+                fv3_debug_log("fv3_read_container_labels: unnamed container in read");
+                return null;
             }
+            $rcName = ltrim($rcRaw, '/');
+            $answered[$rcName] = true;
             $rcLabel = $rc['Labels']['folder.view3'] ?? '';
             if (is_string($rcLabel) && $rcLabel !== '') { $ctLabels[$rcName] = $rcLabel; }
+        }
+        // Identity, not cardinality: a same-size response (concurrent rename between the two
+        // Docker reads) would leave a container with no label answer and place it as unassigned.
+        foreach ($allContainerNames as $n) {
+            if (!isset($answered[$n])) {
+                fv3_debug_log("fv3_read_container_labels: '$n' missing from label read");
+                return null;
+            }
+        }
+        return $ctLabels;
+    }
+
+    // Effective membership — explicit > label > regex (issues #46/#55). Single source of
+    // truth shared by syncContainerOrder and read_membership.php (issue #61). Returns null
+    // on a corrupt persisted shape so callers fail closed instead of fataling mid-compute.
+    function fv3_compute_folder_membership(array $folders, array $allContainerNames, array $ctLabels): ?array {
+        foreach ($folders as $folder) {
+            if (!is_array($folder) || !is_array($folder['containers'] ?? [])
+                || (isset($folder['name']) && !is_string($folder['name']))) { return null; }
         }
         $folderNameSet = [];
         foreach ($folders as $folder) {
             if (isset($folder['name'])) { $folderNameSet[$folder['name']] = true; }
         }
-
-        // A corrupt persisted shape must abort before the autostart write, not fatal mid-sync
-        foreach ($folders as $folder) {
-            if (!is_array($folder) || !is_array($folder['containers'] ?? [])) {
-                fv3_debug_log("syncContainerOrder: folder entry with invalid containers shape, aborting before write");
-                return;
-            }
-        }
-
         $folderContainers = [];
         $folderNames = [];
         $assignedContainers = [];
-        // Explicit members and label claims of any folder beat regex matches elsewhere (issue #46);
-        // explicit members alone also beat label claims elsewhere (issue #55)
         $explicitMembers = [];
         foreach ($folders as $folder) {
             $explicitMembers = array_merge($explicitMembers, $folder['containers'] ?? []);
@@ -546,6 +537,68 @@
             $folderNames["folder-$folderId"] = $folder['name'] ?? "folder-$folderId";
             $assignedContainers = array_merge($assignedContainers, $members);
         }
+        return ['containers' => $folderContainers, 'names' => $folderNames, 'assigned' => $assignedContainers];
+    }
+
+    function syncContainerOrder(string $type): void {
+        // Rewrites the autostart file to match what FV3 renders on screen — top-to-bottom,
+        // folder members left-to-right in their editor-chosen order. Render order itself is
+        // owned by Unraid (userprefs.cfg if user drag-reordered, alphabetical otherwise);
+        // FV3 no longer auto-writes userprefs.cfg from this function.
+        global $configDir;
+        fv3_debug_log("syncContainerOrder called for type: $type");
+
+        if ($type !== 'docker') { return; }
+
+        $autostartMode = readAutostartConfig()['mode'];
+        // 'off' = FV3 never writes the autostart file — pure stock Unraid behaviour
+        if ($autostartMode === 'off') { fv3_debug_log("syncContainerOrder: autostart mode off, skipping"); return; }
+
+        $prefsFile = "/boot/config/plugins/dockerMan/userprefs.cfg";
+        $foldersFile = "$configDir/docker.json";
+        $folders = fv3_read_json_strict($foldersFile);
+        if ($folders === null) {
+            // Corrupt folder config must not rewrite the autostart file as if no folders exist
+            fv3_debug_log("syncContainerOrder: $foldersFile unreadable, aborting before write");
+            return;
+        }
+
+        $dockerClient = new DockerClient();
+        $ctNames = fv3_read_container_names($dockerClient);
+        $allContainerNames = $ctNames['names'];
+        // Prune below only on a complete, fully-named container list — a degraded Docker read must not wipe autostart entries (#214)
+        $ctListComplete = $ctNames['complete'];
+
+        // 'custom' = the Autostart tab's saved sequence overrides folder-derived order entirely
+        if ($autostartMode === 'custom') {
+            fv3_apply_custom_autostart($allContainerNames, $ctListComplete);
+            return;
+        }
+
+        // Folder-derived order needs the WHOLE list: containers missing from a partial read are
+        // skipped by the order walk and land appended at the end, silently reordering the file.
+        // Custom mode above is exempt — its order comes from the saved sequence, not this list.
+        if (!$ctListComplete) {
+            fv3_debug_log("syncContainerOrder: container list empty or incomplete, aborting before write");
+            return;
+        }
+
+        $ctLabels = fv3_read_container_labels($dockerClient, $allContainerNames);
+        // Fail closed: without label claims the order below would write label-assigned
+        // containers back out as unassigned — the same hazard $ctListComplete guards above.
+        if ($ctLabels === null) {
+            fv3_debug_log("syncContainerOrder: label read unavailable or incomplete, aborting before write");
+            return;
+        }
+        $membership = fv3_compute_folder_membership($folders, $allContainerNames, $ctLabels);
+        // Corrupt persisted shapes fail closed before the autostart write, not fatal mid-sync
+        if ($membership === null) {
+            fv3_debug_log("syncContainerOrder: folder entry with invalid containers shape, aborting before write");
+            return;
+        }
+        $folderContainers = $membership['containers'];
+        $folderNames = $membership['names'];
+        $assignedContainers = $membership['assigned'];
 
         // Build $currentOrder. Source:
         //   - userprefs.cfg if it exists (user has drag-reordered at some point)

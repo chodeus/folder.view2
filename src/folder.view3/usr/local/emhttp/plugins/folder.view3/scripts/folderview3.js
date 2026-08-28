@@ -689,9 +689,15 @@ $('#fv3-import-all').on('change', function() {
 // ---- Autostart tab ----
 let fv3AsSnapshot = null;
 let fv3AsInfo = {};
+let fv3AsMembership = null;
 let fv3AsLoadStarted = false;
 
 const fv3AsFolderOf = (name) => {
+    // Server-computed effective membership — explicit > label > regex (issue #61);
+    // explicit-only scan is the fallback when that read failed.
+    if (fv3AsMembership) {
+        return Object.prototype.hasOwnProperty.call(fv3AsMembership, name) ? fv3AsMembership[name] : '';
+    }
     for (const folder of Object.values(dockers)) {
         if (Array.isArray(folder.containers) && folder.containers.includes(name)) return folder.name || '';
     }
@@ -791,10 +797,13 @@ const fv3AsBindOnce = () => {
 
 const fv3LoadAutostart = async () => {
     try {
-        const [as, info] = (await Promise.all([
+        const [as, info, memb] = (await Promise.all([
             $.get('/plugins/folder.view3/server/read_autostart.php').promise(),
-            $.get('/plugins/folder.view3/server/read_info.php?type=docker').promise()
+            $.get('/plugins/folder.view3/server/read_info.php?type=docker').promise(),
+            // badge enrichment only — a failed membership read must not break the tab
+            $.get('/plugins/folder.view3/server/read_membership.php?type=docker').promise().catch(() => null)
         ])).map(r => fv3SafeParse(r, {}));
+        fv3AsMembership = memb && typeof memb.membership === 'object' && memb.membership !== null ? memb.membership : null;
         fv3AsInfo = {};
         for (const [name, ct] of Object.entries(info)) {
             // only dockerman-managed containers participate in Unraid autostart
