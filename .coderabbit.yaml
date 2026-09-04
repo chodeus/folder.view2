@@ -159,14 +159,16 @@ reviews:
         entries present for the shipped version.
     - path: ".github/workflows/**"
       instructions: |
-        CI and the beta/main release automation:
-        - ci.yml gates are php -l on every PHP file, xmllint on the .plg, and a
-          rebuild whose md5 must equal the .plg's <!ENTITY md5>. Flag any of
-          them made non-blocking or reduced to a warning.
-        - release-beta.yml commits and pushes to beta directly (an irreversible
-          publish): the BETA_RELEASE_TOKEN pre-flight must stay a hard failure,
-          TZ must stay Australia/Perth because pkg_build.sh versions from date,
-          and the archive-exists check must stay exit 1.
+        CI and the release-PR automation:
+        - ci.yml gates are php -l on every PHP file, xmllint on the .plg, the
+          plg_release.py check (CHANGELOG.md must render to the committed
+          CHANGES block, pluginURL must name the branch, the manifest md5 must
+          match the served package), and a test build. Flag any of them made
+          non-blocking or reduced to a warning.
+        - release.yml is a thin caller of chodeus-ops' unraid-plugin-release
+          reusable: it must keep passing RELEASE_TOKEN, keep beta_branch: beta,
+          keep the paths filter (CHANGELOG.md included, or release-PR merges
+          never trigger) and the plg-release concurrency group.
         - Enumerate allowed states positively (== 'success' || == 'skipped'),
           never by negation; pin third-party actions by commit SHA; never
           interpolate untrusted input (PR title, branch name) into `run:`.
@@ -176,7 +178,9 @@ reviews:
         - pkg_build.sh's guards must stay: filecount >= 10, package >= 1000
           bytes, and the post-sed re-read that fails when the .plg version or
           md5 does not match what was built. Its rm -rf / chmod -R / sed -i
-          must only touch tmp/, archive/ and folder.view3.plg.
+          must only touch tmp/, dist/ and folder.view3.plg. The version comes
+          from --version (the release workflow owns numbering); never
+          reintroduce date or archive-glob versioning here.
         - copy_to_git.sh has no set -e, rm -Rf's the plugin source tree before
           copying, and chmod/chown -R's the WHOLE cwd — flag any change that
           widens a path or runs it outside the repo root; quote $CWD.

@@ -20,60 +20,29 @@ fi
 
 CWD=`pwd`
 tmpdir="$CWD/tmp/tmp.$((RANDOM % 1000000))"
-version=$(date +"%Y.%m.%d")
 plgfile="$CWD/folder.view3.plg"
+OUT="$CWD/dist"
 
-# Auto-detect current git branch, with optional flag override
-# Usage: pkg_build.sh [--beta [N] | --develop [N] | --main]
-#   (no flag)    → auto-detect branch from git
-#   --beta [N]   → force beta branch
-#   --develop [N]→ force develop branch
-#   --main       → force main branch (stable)
-GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-SUFFIX_NUM=""
+# Usage: pkg_build.sh [--version YYYY.MM.DD[.N]] [--branch main|beta] [--out DIR]
+# The release workflow passes the version; a bare run stamps today's date for local testing.
+version=""
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --version) version="$2"; shift 2 ;;
+        --branch)  branch="$2";  shift 2 ;;
+        --out)     OUT="$2";     shift 2 ;;
+        *) echo "ERROR: unknown option '$1'"; exit 1 ;;
+    esac
+done
+[ -n "$version" ] || version=$(date +"%Y.%m.%d")
+case "$branch" in
+    main|beta) ;;
+    *) echo "Warning: unrecognized branch '$branch', pointing pluginURL at main"; branch="main" ;;
+esac
+filename="$OUT/folder.view3-$version-x86_64-1.txz"
 
-if [ "${1:-}" = "--beta" ]; then
-    branch="beta"
-    if [ -n "${2:-}" ] && [ "${2:-}" -eq "${2:-}" ] 2>/dev/null; then SUFFIX_NUM="$2"; fi
-elif [ "${1:-}" = "--develop" ]; then
-    branch="develop"
-    if [ -n "${2:-}" ] && [ "${2:-}" -eq "${2:-}" ] 2>/dev/null; then SUFFIX_NUM="$2"; fi
-elif [ "${1:-}" = "--main" ]; then
-    branch="main"
-else
-    branch="$GIT_BRANCH"
-fi
-
-# Set version suffix based on branch
-if [ "$branch" = "develop" ] || [ "$branch" = "beta" ]; then
-    if [ -z "$SUFFIX_NUM" ]; then
-        # Auto-increment: find highest existing hotfix number and add 1
-        highest=0
-        for f in $CWD/archive/folder.view3-${version}.*-x86_64-1.txz; do
-            [ -e "$f" ] || continue
-            num=$(echo "$f" | sed 's/.*\.\([0-9]*\)-x86_64-1\.txz/\1/')
-            [ -n "$num" ] && [ "$num" -gt "$highest" ] && highest=$num
-        done
-        SUFFIX_NUM=$((highest + 1))
-    fi
-    version="${version}.${SUFFIX_NUM}"
-elif [ "$branch" != "main" ]; then
-    echo "Warning: unrecognized branch '$branch', defaulting to main"
-    branch="main"
-fi
-
-filename="$CWD/archive/folder.view3-$version-x86_64-1.txz"
-
-# Collision detection for main branch (date-based only)
-if [ "$branch" = "main" ]; then
-    dayversion=$(find "$CWD/archive" -maxdepth 1 -name "folder.view3-$version*-x86_64-1.txz" -type f 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$dayversion" -gt 0 ]; then
-        version="$version.$dayversion"
-        filename="$CWD/archive/folder.view3-$version-x86_64-1.txz"
-    fi
-fi
-
-mkdir -p $tmpdir
+mkdir -p "$tmpdir" "$OUT"
 
 cd "$CWD/src/folder.view3"
 CP_PARENTS "$tmpdir"
@@ -113,9 +82,8 @@ md5=$(MD5CMD "$filename")
 "${SED_I[@]}" "s/<!ENTITY version.*>/<!ENTITY version \"$version\">/" "$plgfile"
 "${SED_I[@]}" "s/<!ENTITY md5.*>/<!ENTITY md5 \"$md5\">/" "$plgfile"
 
-# Update branch references in plg file (URLs use XML entities like &github;)
+# Point pluginURL at this branch (URLs use XML entities like &github;)
 "${SED_I[@]}" 's|&github;/[a-zA-Z]*/&name;.plg|\&github;/'"$branch"'/\&name;.plg|' "$plgfile"
-"${SED_I[@]}" 's|&github;/[a-zA-Z]*/archive/|\&github;/'"$branch"'/archive/|' "$plgfile"
 
 # Verify plg was updated correctly
 plg_version=$(grep 'ENTITY version' "$plgfile" | grep -o '"[^"]*"' | tr -d '"')

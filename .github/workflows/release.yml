@@ -1,0 +1,45 @@
+name: Release
+
+# Release-PR model: every push to main or beta refreshes that channel's release PR with seed
+# bullets in CHANGELOG.md; merging the PR cuts the release (version stamp, CHANGES render,
+# build, tag, GitHub release with the .txz attached; betas are pre-releases). The stable PR
+# is the beta→main promotion itself. Needs the RELEASE_TOKEN secret.
+
+on:
+  push:
+    branches: [main, beta]
+    paths:
+      - 'src/**'
+      - 'pkg_build.sh'
+      - 'folder.view3.plg'
+      - 'CHANGELOG.md'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'auto = decide from the pushed commit; pr = refresh the release PR; release = cut a release from this branch'
+        type: choice
+        options: [auto, pr, release]
+        default: auto
+      dry_run:
+        description: 'Run everything except pushes, tags and the GitHub release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plg-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-release.yml@main
+    with:
+      plg_file: folder.view3.plg
+      stable_branch: main
+      beta_branch: beta
+      mode: ${{ inputs.mode || 'auto' }}
+      dry_run: ${{ inputs.dry_run || false }}
+    secrets:
+      RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
