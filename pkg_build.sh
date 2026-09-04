@@ -23,8 +23,8 @@ tmpdir="$CWD/tmp/tmp.$((RANDOM % 1000000))"
 plgfile="$CWD/folder.view3.plg"
 OUT="$CWD/dist"
 
-# Usage: pkg_build.sh [--version YYYY.MM.DD[.N]] [--branch main|beta] [--out DIR]
-# The release workflow passes the version; a bare run stamps today's date for local testing.
+# Usage: pkg_build.sh --version YYYY.MM.DD[.N] [--branch main|beta] [--out DIR]
+# The release workflow owns version numbering; local test builds pass any version explicitly.
 version=""
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
 while [ $# -gt 0 ]; do
@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
         *) echo "ERROR: unknown option '$1'"; exit 1 ;;
     esac
 done
-[ -n "$version" ] || version=$(date +"%Y.%m.%d")
+[ -n "$version" ] || { echo "ERROR: --version is required (e.g. --version 0000.00.00 for a test build)"; exit 1; }
 case "$branch" in
     main|beta) ;;
     *) echo "Warning: unrecognized branch '$branch', pointing pluginURL at main"; branch="main" ;;
