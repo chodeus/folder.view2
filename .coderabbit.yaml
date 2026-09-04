@@ -3,8 +3,13 @@
 language: "en-US"
 
 reviews:
-  profile: "chill"
+  # assertive: chill passed a diff clean that assertive flagged with two Major findings (2026-09-03); the "**" rule keeps style nits out
+  profile: "assertive"
   request_changes_workflow: false
+  pre_merge_checks:
+    # off: the 80% docstring-coverage warning contradicts the one-line-docstring rule under "**"
+    docstrings:
+      mode: "off"
 
   auto_review:
     enabled: true
@@ -152,6 +157,48 @@ reviews:
         remove and any inline JS/CSS injection must not fight Unraid's native UI
         or create autostart / DOM-ordering conflicts on page load; <CHANGES>
         entries present for the shipped version.
+    - path: ".github/workflows/**"
+      instructions: |
+        CI and the beta/main release automation:
+        - ci.yml gates are php -l on every PHP file, xmllint on the .plg, and a
+          rebuild whose md5 must equal the .plg's <!ENTITY md5>. Flag any of
+          them made non-blocking or reduced to a warning.
+        - release-beta.yml commits and pushes to beta directly (an irreversible
+          publish): the BETA_RELEASE_TOKEN pre-flight must stay a hard failure,
+          TZ must stay Australia/Perth because pkg_build.sh versions from date,
+          and the archive-exists check must stay exit 1.
+        - Enumerate allowed states positively (== 'success' || == 'skipped'),
+          never by negation; pin third-party actions by commit SHA; never
+          interpolate untrusted input (PR title, branch name) into `run:`.
+    - path: "{pkg_build.sh,copy_to_git.sh,.githooks/**}"
+      instructions: |
+        Packaging, source-sync and pre-push scripts:
+        - pkg_build.sh's guards must stay: filecount >= 10, package >= 1000
+          bytes, and the post-sed re-read that fails when the .plg version or
+          md5 does not match what was built. Its rm -rf / chmod -R / sed -i
+          must only touch tmp/, archive/ and folder.view3.plg.
+        - copy_to_git.sh has no set -e, rm -Rf's the plugin source tree before
+          copying, and chmod/chown -R's the WHOLE cwd — flag any change that
+          widens a path or runs it outside the repo root; quote $CWD.
+        - .githooks/pre-push must fail closed: an unreadable .plg or a
+          pluginURL that does not name the branch being pushed is a rejection.
+    - path: "**"
+      instructions: |-
+        Applies to every file, whatever the language:
+        - Comments are navigational or instructional only and capped at 1-2 lines:
+          what a non-obvious block does, or the gotcha it guards. No why/history
+          essays, no before/after narrative, no restating the code, no section
+          banners. Docstrings: one line unless the signature genuinely cannot
+          carry it. Never ask for a docstring to be added; a missing docstring
+          is not a finding.
+        - The 1-2 line cap wins even inside an already heavily-commented file —
+          matching local density is not licence to exceed it.
+        - A comment, docstring, help text, column header, log message or UI label
+          that disagrees with what the code does is a correctness finding, not a
+          stale-comment nit: report it and say which side is wrong.
+        - Do not flag stylistic preferences that are consistent across the file
+          (naming, quoting, import order, formatting, line length). Report
+          correctness, security, data-loss and the classes named above.
 
   tools:
     # Secret scanning across the whole tree — always on.
@@ -166,13 +213,21 @@ reviews:
     # semantic PHP risks are covered by AI review + path_instructions.
     phpstan:
       enabled: false
-    # biome/eslint OFF: vanilla jQuery with no JS lint config and many injected
+    # phpmd/phpcs OFF for the same reason: no ruleset, no PSR conformance, and
+    # emhttp globals read as undefined — style/complexity noise, not defects.
+    phpmd:
+      enabled: false
+    phpcs:
+      enabled: false
+    # biome/eslint/oxc OFF: vanilla jQuery with no JS lint config and many injected
     # globals ($, jQuery, Unraid page globals) — a config-less run is mostly
     # no-undef noise that would also fight the repo's formatting. DOM-safety and
     # correctness are enforced via the JS path_instructions instead.
     biome:
       enabled: false
     eslint:
+      enabled: false
+    oxc:
       enabled: false
     # markdownlint OFF: docs/changelogs only; not worth the review noise.
     markdownlint:
