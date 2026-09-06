@@ -40,9 +40,9 @@ case "$branch" in
     main|beta) ;;
     *) echo "Warning: unrecognized branch '$branch', pointing pluginURL at main"; branch="main" ;;
 esac
-filename="$OUT/folder.view3-$version-x86_64-1.txz"
-
 mkdir -p "$tmpdir" "$OUT"
+OUT=$(cd "$OUT" && pwd)  # tar runs from the temp dir, so a relative --out would land there
+filename="$OUT/folder.view3-$version-x86_64-1.txz"
 
 cd "$CWD/src/folder.view3"
 CP_PARENTS "$tmpdir"
