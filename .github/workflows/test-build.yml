@@ -1,0 +1,30 @@
+# On-demand test build; the run summary shows the install URL. Inputs: chodeus-ops unraid-plugin-test-build.yml.
+
+name: Test build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional YYYY.MM.DD[.N]. Empty = yesterday + .9<run>, which installs over the current release and is replaced by the next one.'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# One rolling pre-release per repo; two runs at once would race to replace it.
+concurrency:
+  group: plg-test-build
+  cancel-in-progress: false
+
+jobs:
+  test-build:
+    # The called workflow can use at most what this job grants: it needs to replace the pre-release and its tag.
+    permissions:
+      contents: write
+    # Pin to a reviewed chodeus-ops commit.
+    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-test-build.yml@ab24506df084c71a4ca0f04b29ec96315cbbe42f # main
+    with:
+      plg_file: folder.view3.plg
+      version: ${{ inputs.version || '' }}
