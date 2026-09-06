@@ -2,6 +2,10 @@
 
 After updating, hard-refresh your browser (Ctrl/Cmd+Shift+R) and clear its cache if the page doesn't display correctly — before submitting a debug .json.
 
+## Unreleased
+
+- fix(pkg_build): resolve --out before building so a relative path works
+
 ## 2026.08.28
 
 - Containers assigned by a `folder.view3` Docker label (including Compose services) no longer override a folder you picked explicitly, and can't end up in two folders at once
